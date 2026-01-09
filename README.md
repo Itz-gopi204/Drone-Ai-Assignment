@@ -120,8 +120,8 @@ The **Drone Security Analyst Agent** is a prototype system that processes simula
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/drone-security-agent.git
-   cd drone-security-agent
+   git clone https://github.com/Itz-gopi204/Drone-Ai-Assignment.git
+   cd Drone-Ai-Assignment
    ```
 
 2. **Create a virtual environment** (recommended)

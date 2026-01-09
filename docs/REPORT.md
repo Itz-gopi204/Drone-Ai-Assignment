@@ -13,15 +13,18 @@ This report documents the design, implementation, and evaluation of the Drone Se
 
 **Key Achievements:**
 - Functional prototype with all required components
-- 5 predefined security alert rules
+- **6 predefined security alert rules** (including R006 Suspicious Behavior)
 - Frame-by-frame indexing with SQLite + ChromaDB semantic search
 - LangChain v1 with **create_react_agent** (latest API)
 - **LangGraph multi-agent orchestration** with supervisor pattern
 - **Groq API integration** (Llama 3.3-70B, free tier available)
+- **LLM-Powered Frame Analysis** - AI agent analyzes descriptions and generates alerts
 - Human-in-the-loop for critical alerts
 - Comprehensive test suite with **142 test cases**
-- **Streamlit Web Dashboard** for interactive demonstration
+- **Streamlit Web Dashboard** with 5 interactive tabs
 - Bonus features: Video summarization and Q&A system
+
+**Live Demo:** The Streamlit dashboard allows real-time interaction with the AI agent for frame analysis, database queries, and security summaries.
 
 ---
 
@@ -142,21 +145,36 @@ This design allows:
 
 ```python
 ALERT_RULES = [
-    {
-        "id": "R001",
-        "name": "Night Activity",
-        "condition": "person detected AND time between 00:00-05:00",
-        "priority": "HIGH"
-    },
-    {
-        "id": "R002",
-        "name": "Loitering Detection",
-        "condition": "same person in same zone for > 5 minutes",
-        "priority": "HIGH"
-    },
-    # ... 3 more rules
+    {"id": "R001", "name": "Night Activity", "priority": "HIGH",
+     "condition": "Person detected between 00:00-05:00"},
+    {"id": "R002", "name": "Loitering Detection", "priority": "HIGH",
+     "condition": "Same person in same zone > 5 minutes"},
+    {"id": "R003", "name": "Perimeter Activity", "priority": "MEDIUM",
+     "condition": "Activity in perimeter zone"},
+    {"id": "R004", "name": "Repeat Vehicle", "priority": "LOW",
+     "condition": "Same vehicle > 2 times in 24h"},
+    {"id": "R005", "name": "Unknown Vehicle", "priority": "MEDIUM",
+     "condition": "Unrecognized vehicle in restricted area"},
+    {"id": "R006", "name": "Suspicious Behavior", "priority": "HIGH",
+     "condition": "Face covering, hiding, suspicious actions"}
 ]
 ```
+
+### 3.3 LLM-Powered Frame Analysis
+
+The system uses Groq's Llama 3.3-70B model to analyze frame descriptions:
+
+```python
+def analyze_frame_with_llm(description, location, timestamp):
+    """AI agent analyzes frame and returns structured JSON with:
+    - objects: detected people, vehicles, animals, items
+    - alerts: triggered security rules with reasons
+    - analysis: brief security assessment
+    - threat_level: NONE/LOW/MEDIUM/HIGH/CRITICAL
+    """
+```
+
+This enables intelligent analysis beyond keyword matching, detecting nuanced threats like "suspicious behavior" or "face covering".
 
 ### 3.3 Database Schema
 
