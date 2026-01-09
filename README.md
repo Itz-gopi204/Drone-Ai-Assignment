@@ -627,7 +627,3 @@ This project was created as part of the FlytBase AI Engineer assignment.
 ## Contact
 
 For questions about this implementation, please contact the repository owner.
-
----
-
-*Built with Claude Code assistance*

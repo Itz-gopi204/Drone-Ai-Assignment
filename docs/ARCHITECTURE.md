@@ -164,7 +164,7 @@ Generates simulated video frames with text descriptions:
 │                    LANGCHAIN AGENT ARCHITECTURE                  │
 │                                                                  │
 │  ┌──────────────────────────────────────────────────────────┐   │
-│  │                     LLM (GPT-4 / Claude)                  │   │
+│  │                   LLM (Groq Llama 3.3-70B)                │   │
 │  │                                                           │   │
 │  │   System Prompt:                                          │   │
 │  │   "You are a security analyst agent monitoring a          │   │
@@ -338,7 +338,7 @@ CREATE TABLE detections (
 | Component | Technology | Justification |
 |-----------|------------|---------------|
 | Language | Python 3.10+ | Rich AI/ML ecosystem |
-| LLM | OpenAI GPT-4 / Claude | High reasoning capability |
+| LLM | Groq Llama 3.3-70B / OpenAI | Fast inference, high reasoning |
 | Agent Framework | LangChain | Robust tool integration |
 | VLM | BLIP-2 / Simulated | Prototype flexibility |
 | Database | SQLite | Simple, no server needed |

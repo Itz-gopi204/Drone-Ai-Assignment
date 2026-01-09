@@ -902,6 +902,4 @@ db.query_frames(description: str = None, zone: str = None,
 
 **Repository:** https://github.com/Itz-gopi204/Drone-Ai-Assignment
 
-**Contact:** Gopi
-
-*Report generated with Claude Code assistance*
+**Author:** Gopi
