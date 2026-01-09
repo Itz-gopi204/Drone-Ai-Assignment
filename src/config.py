@@ -1,5 +1,6 @@
 """
 Configuration settings for the Drone Security Analyst Agent.
+Supports both local (.env) and Streamlit Cloud (st.secrets) deployment.
 """
 
 import os
@@ -8,6 +9,24 @@ from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+
+
+def get_config_value(key: str, default: str = "") -> str:
+    """
+    Get configuration value from Streamlit secrets or environment variables.
+    Priority: Streamlit secrets > Environment variables > Default
+    """
+    # Try Streamlit secrets first (for cloud deployment)
+    try:
+        import streamlit as st
+        if hasattr(st, 'secrets') and key in st.secrets:
+            return st.secrets[key]
+    except Exception:
+        pass
+
+    # Fall back to environment variables (for local development)
+    return os.getenv(key, default)
+
 
 # Project paths
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -23,15 +42,15 @@ CHROMA_DB_PATH.mkdir(exist_ok=True)
 
 # LLM Provider Configuration
 # Supported providers: "groq", "openai"
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "groq")  # Default to Groq (free tier available)
+LLM_PROVIDER = get_config_value("LLM_PROVIDER", "groq")  # Default to Groq (free tier available)
 
 # Groq API Configuration (Free tier available - https://console.groq.com)
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-GROQ_MODEL_NAME = os.getenv("GROQ_MODEL_NAME", "llama-3.3-70b-versatile")  # Fast & powerful
+GROQ_API_KEY = get_config_value("GROQ_API_KEY", "")
+GROQ_MODEL_NAME = get_config_value("GROQ_MODEL_NAME", "llama-3.3-70b-versatile")  # Fast & powerful
 
 # OpenAI API Configuration (fallback)
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-OPENAI_MODEL_NAME = os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini")
+OPENAI_API_KEY = get_config_value("OPENAI_API_KEY", "")
+OPENAI_MODEL_NAME = get_config_value("OPENAI_MODEL_NAME", "gpt-4o-mini")
 
 # Active model based on provider
 MODEL_NAME = GROQ_MODEL_NAME if LLM_PROVIDER == "groq" else OPENAI_MODEL_NAME
