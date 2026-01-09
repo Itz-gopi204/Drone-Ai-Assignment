@@ -78,55 +78,255 @@ I approached this as a **production-ready prototype** with:
 
 ## 3. Solution Architecture
 
-### System Overview
+### 3.1 High-Level System Architecture
 
+```mermaid
+flowchart TB
+    subgraph UI["🖥️ USER INTERFACE"]
+        ST[/"Streamlit Web Dashboard"/]
+        T1["Live Demo"]
+        T2["Frame Processing"]
+        T3["Alerts"]
+        T4["Query Database"]
+        T5["Summary"]
+        ST --> T1 & T2 & T3 & T4 & T5
+    end
+
+    subgraph INTEL["🧠 INTELLIGENCE LAYER"]
+        LLM["LLM Engine<br/>(Groq/OpenAI)"]
+        LANG["LangChain Agent"]
+        GRAPH["LangGraph<br/>Multi-Agent System"]
+    end
+
+    subgraph PROCESS["⚙️ PROCESSING LAYER"]
+        SIM["Simulator"]
+        ANA["Analyzer"]
+        ALERT["Alert Engine"]
+        BONUS["Bonus Features"]
+    end
+
+    subgraph STORAGE["💾 STORAGE LAYER"]
+        SQL[("SQLite<br/>Database")]
+        CHROMA[("ChromaDB<br/>Vector Store")]
+    end
+
+    UI --> INTEL
+    INTEL --> PROCESS
+    PROCESS --> STORAGE
+
+    style UI fill:#e1f5fe,stroke:#01579b
+    style INTEL fill:#fff3e0,stroke:#e65100
+    style PROCESS fill:#e8f5e9,stroke:#2e7d32
+    style STORAGE fill:#fce4ec,stroke:#880e4f
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           USER INTERFACE                                     │
-│                    Streamlit Web Dashboard (5 Tabs)                          │
-│   [Live Demo] [Frame Processing] [Alerts] [Query Database] [Summary]         │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         INTELLIGENCE LAYER                                   │
-│  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │                    LangGraph Multi-Agent System                      │    │
-│  │  ┌───────────┐                                                       │    │
-│  │  │ Supervisor│ ──► Routes to specialized agents                      │    │
-│  │  └─────┬─────┘                                                       │    │
-│  │        │                                                             │    │
-│  │  ┌─────┴─────┬─────────┬─────────┬─────────┐                        │    │
-│  │  ▼           ▼         ▼         ▼         ▼                        │    │
-│  │ Analyzer  Alerter  Searcher  Summarizer  Human Review               │    │
-│  └─────────────────────────────────────────────────────────────────────┘    │
-│                                                                              │
-│  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │              LLM-Powered Frame Analysis (Groq/OpenAI)                │    │
-│  │  Input: Frame Description → LLM → Objects + Alerts + Threat Level   │    │
-│  └─────────────────────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           PROCESSING LAYER                                   │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │
-│  │  Simulator   │  │   Analyzer   │  │ Alert Engine │  │Bonus Features│    │
-│  │  telemetry   │  │   objects    │  │   6 rules    │  │  summary/QA  │    │
-│  │  + frames    │  │   tracking   │  │   alerts     │  │              │    │
-│  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘    │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                            STORAGE LAYER                                     │
-│  ┌────────────────────────┐         ┌────────────────────────┐              │
-│  │     SQLite Database    │         │   ChromaDB Vector Store │              │
-│  │  - frame_index table   │         │  - Semantic embeddings  │              │
-│  │  - alerts table        │         │  - Similarity search    │              │
-│  │  - detections table    │         │  - all-MiniLM-L6-v2     │              │
-│  └────────────────────────┘         └────────────────────────┘              │
-└─────────────────────────────────────────────────────────────────────────────┘
+
+### 3.2 Data Flow Architecture
+
+```mermaid
+flowchart LR
+    subgraph INPUT["📥 Input"]
+        DRONE["🛸 Drone<br/>Telemetry"]
+        FRAME["🎬 Video<br/>Frames"]
+    end
+
+    subgraph PROCESSING["⚙️ Processing Pipeline"]
+        direction TB
+        SIM["Simulator<br/>generates data"]
+        LLM["LLM Analysis<br/>Llama 3.3-70B"]
+        DETECT["Object<br/>Detection"]
+        RULES["Alert Rule<br/>Engine"]
+    end
+
+    subgraph OUTPUT["📤 Output"]
+        OBJ["Detected<br/>Objects"]
+        ALERTS["Security<br/>Alerts"]
+        THREAT["Threat<br/>Level"]
+    end
+
+    subgraph STORE["💾 Storage"]
+        DB[("SQLite")]
+        VEC[("ChromaDB")]
+    end
+
+    DRONE --> SIM
+    FRAME --> SIM
+    SIM --> LLM
+    LLM --> DETECT
+    DETECT --> RULES
+    RULES --> OBJ & ALERTS & THREAT
+    OBJ & ALERTS --> DB
+    OBJ & ALERTS --> VEC
+
+    style INPUT fill:#bbdefb
+    style PROCESSING fill:#fff9c4
+    style OUTPUT fill:#c8e6c9
+    style STORE fill:#f8bbd9
+```
+
+### 3.3 Multi-Agent System Architecture (LangGraph)
+
+```mermaid
+flowchart TB
+    START((Start)) --> SUP
+
+    subgraph AGENTS["🤖 Multi-Agent System"]
+        SUP{"🎯 Supervisor<br/>Agent"}
+
+        SUP -->|"analyze"| A1["📊 Analyzer Agent<br/>Object Detection"]
+        SUP -->|"alert"| A2["🚨 Alerter Agent<br/>Rule Evaluation"]
+        SUP -->|"search"| A3["🔍 Searcher Agent<br/>Database Queries"]
+        SUP -->|"summarize"| A4["📝 Summarizer Agent<br/>Report Generation"]
+        SUP -->|"review"| A5["👤 Human Review<br/>Manual Override"]
+
+        A1 --> SUP
+        A2 --> SUP
+        A3 --> SUP
+        A4 --> SUP
+        A5 --> SUP
+    end
+
+    SUP -->|"complete"| END((End))
+
+    style SUP fill:#ff9800,stroke:#e65100,color:#fff
+    style A1 fill:#2196f3,stroke:#1565c0,color:#fff
+    style A2 fill:#f44336,stroke:#c62828,color:#fff
+    style A3 fill:#4caf50,stroke:#2e7d32,color:#fff
+    style A4 fill:#9c27b0,stroke:#6a1b9a,color:#fff
+    style A5 fill:#607d8b,stroke:#37474f,color:#fff
+```
+
+### 3.4 Component Interaction Diagram
+
+```mermaid
+flowchart TB
+    subgraph FRONTEND["Frontend Layer"]
+        WEB["streamlit_app.py<br/>Web Dashboard"]
+    end
+
+    subgraph CORE["Core Processing"]
+        CONFIG["config.py"]
+        SIM["simulator.py"]
+        ANA["analyzer.py"]
+        ALERT["alert_engine.py"]
+    end
+
+    subgraph AI["AI/ML Layer"]
+        AGENT["agent.py<br/>LangChain"]
+        GRAPH["graph_agent.py<br/>LangGraph"]
+        BONUS["bonus_features.py<br/>Summary & QA"]
+    end
+
+    subgraph DATA["Data Layer"]
+        DB["database.py<br/>SQLite"]
+        VEC["vector_store.py<br/>ChromaDB"]
+    end
+
+    subgraph EXTERNAL["External Services"]
+        GROQ["Groq API<br/>Llama 3.3-70B"]
+        OPENAI["OpenAI API<br/>GPT-4o-mini"]
+    end
+
+    WEB --> CONFIG
+    WEB --> SIM
+    WEB --> ANA
+    WEB --> ALERT
+    WEB --> AGENT
+    WEB --> BONUS
+
+    AGENT --> GROQ
+    AGENT --> OPENAI
+    GRAPH --> GROQ
+    BONUS --> GROQ
+
+    ANA --> DB
+    ALERT --> DB
+    AGENT --> VEC
+    BONUS --> DB
+
+    style FRONTEND fill:#e3f2fd,stroke:#1976d2
+    style CORE fill:#fff8e1,stroke:#ffa000
+    style AI fill:#fce4ec,stroke:#c2185b
+    style DATA fill:#e8f5e9,stroke:#388e3c
+    style EXTERNAL fill:#f3e5f5,stroke:#7b1fa2
+```
+
+### 3.5 Security Alert Flow
+
+```mermaid
+flowchart LR
+    FRAME["📹 Frame<br/>Description"] --> PARSE["Parse &<br/>Extract"]
+
+    PARSE --> R1{"R001<br/>Night?"}
+    PARSE --> R2{"R002<br/>Loiter?"}
+    PARSE --> R3{"R003<br/>Perimeter?"}
+    PARSE --> R4{"R004<br/>Repeat?"}
+    PARSE --> R5{"R005<br/>Unknown?"}
+    PARSE --> R6{"R006<br/>Suspicious?"}
+
+    R1 -->|"00:00-05:00"| HIGH1["🔴 HIGH"]
+    R2 -->|">5 min"| HIGH2["🔴 HIGH"]
+    R3 -->|"perimeter zone"| MED1["🟡 MEDIUM"]
+    R4 -->|">2x in 24h"| LOW1["🟢 LOW"]
+    R5 -->|"restricted area"| MED2["🟡 MEDIUM"]
+    R6 -->|"face covered"| HIGH3["🔴 HIGH"]
+
+    HIGH1 & HIGH2 & HIGH3 --> CRITICAL["⚠️ Alert<br/>Generated"]
+    MED1 & MED2 --> CRITICAL
+    LOW1 --> CRITICAL
+
+    CRITICAL --> NOTIFY["📱 Notify<br/>Security"]
+
+    style HIGH1 fill:#ffcdd2,stroke:#c62828
+    style HIGH2 fill:#ffcdd2,stroke:#c62828
+    style HIGH3 fill:#ffcdd2,stroke:#c62828
+    style MED1 fill:#fff9c4,stroke:#f9a825
+    style MED2 fill:#fff9c4,stroke:#f9a825
+    style LOW1 fill:#c8e6c9,stroke:#2e7d32
+```
+
+### 3.6 Database Architecture
+
+```mermaid
+erDiagram
+    FRAME_INDEX ||--o{ ALERTS : triggers
+    FRAME_INDEX ||--o{ DETECTIONS : contains
+
+    FRAME_INDEX {
+        int frame_id PK
+        text timestamp
+        text location_name
+        text location_zone
+        text description
+        json objects
+        json telemetry
+        int alert_triggered
+        text created_at
+    }
+
+    ALERTS {
+        int alert_id PK
+        text timestamp
+        int frame_id FK
+        text rule_id
+        text priority
+        text description
+        text status
+    }
+
+    DETECTIONS {
+        int detection_id PK
+        int frame_id FK
+        text object_type
+        text attributes
+        float confidence
+    }
+
+    CHROMADB_VECTORS {
+        text id PK
+        vector embedding
+        json metadata
+        text description
+    }
 ```
 
 ### Component Overview
