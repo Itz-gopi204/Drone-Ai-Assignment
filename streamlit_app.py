@@ -15,6 +15,21 @@ import json
 import time
 from datetime import datetime, timedelta
 import random
+import sys
+import os
+
+# Add src to path for imports
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Import actual agents and database
+try:
+    from src.database import SecurityDatabase
+    from src.bonus_features import VideoSummarizer, SecurityQA, get_llm, has_api_key
+    from src.config import LLM_PROVIDER, GROQ_API_KEY, OPENAI_API_KEY
+    AGENTS_AVAILABLE = True
+except ImportError as e:
+    print(f"Agent import error: {e}")
+    AGENTS_AVAILABLE = False
 
 # Page configuration
 st.set_page_config(
@@ -24,19 +39,19 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for better styling
+# Custom CSS for better styling - with explicit text colors for visibility
 st.markdown("""
 <style>
     .main-header {
         font-size: 2.5rem;
         font-weight: bold;
-        color: #1E88E5;
+        color: #1E88E5 !important;
         text-align: center;
         margin-bottom: 1rem;
     }
     .sub-header {
         font-size: 1.2rem;
-        color: #666;
+        color: #555555 !important;
         text-align: center;
         margin-bottom: 2rem;
     }
@@ -45,36 +60,57 @@ st.markdown("""
         border-radius: 10px;
         padding: 1rem;
         margin: 0.5rem 0;
+        color: #1a1a1a !important;
+    }
+    .frame-box strong {
+        color: #1a1a1a !important;
     }
     .alert-high {
         background-color: #ffebee;
         border-left: 4px solid #f44336;
         padding: 1rem;
         margin: 0.5rem 0;
+        color: #b71c1c !important;
+    }
+    .alert-high strong {
+        color: #c62828 !important;
     }
     .alert-medium {
         background-color: #fff3e0;
         border-left: 4px solid #ff9800;
         padding: 1rem;
         margin: 0.5rem 0;
+        color: #e65100 !important;
+    }
+    .alert-medium strong {
+        color: #ef6c00 !important;
     }
     .alert-low {
         background-color: #e3f2fd;
         border-left: 4px solid #2196f3;
         padding: 1rem;
         margin: 0.5rem 0;
+        color: #0d47a1 !important;
+    }
+    .alert-low strong {
+        color: #1565c0 !important;
     }
     .detection-box {
         background-color: #e8f5e9;
         border-radius: 5px;
         padding: 0.5rem;
         margin: 0.25rem 0;
+        color: #1b5e20 !important;
+    }
+    .detection-box strong {
+        color: #2e7d32 !important;
     }
     .metric-card {
         background-color: white;
         border-radius: 10px;
         padding: 1rem;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        color: #1a1a1a !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -125,18 +161,81 @@ ALERT_RULES = [
     {"id": "R003", "name": "Perimeter Activity", "condition": "Activity in perimeter zone", "priority": "MEDIUM"},
     {"id": "R004", "name": "Repeat Vehicle", "condition": "Same vehicle > 2 times in 24h", "priority": "LOW"},
     {"id": "R005", "name": "Unknown Vehicle", "condition": "Unrecognized vehicle in restricted area", "priority": "MEDIUM"},
+    {"id": "R006", "name": "Suspicious Behavior", "condition": "Suspicious activity detected (covering face, hiding, etc.)", "priority": "HIGH"},
 ]
 
 # ==================== Helper Functions ====================
 
+def analyze_frame_with_llm(description: str, location: dict, timestamp: datetime) -> dict:
+    """Use LLM to analyze frame description and extract objects + alerts."""
+    if not (AGENTS_AVAILABLE and has_api_key()):
+        return {"objects": [], "alerts": [], "analysis": "LLM not available"}
+
+    try:
+        llm = get_llm()
+        if not llm:
+            return {"objects": [], "alerts": [], "analysis": "LLM not available"}
+
+        # Create prompt for LLM analysis
+        prompt = f"""You are a security analyst for a drone surveillance system. Analyze this frame description and provide a security analysis.
+
+FRAME INFORMATION:
+- Description: {description}
+- Location: {location['name']} (Zone: {location['zone']})
+- Timestamp: {timestamp.strftime('%Y-%m-%d %H:%M:%S')}
+- Time of day: {'Night time (restricted hours)' if 0 <= timestamp.hour < 5 else 'Day time'}
+
+SECURITY ALERT RULES:
+- R001 Night Activity (HIGH): Person detected between 00:00-05:00
+- R002 Loitering Detection (HIGH): Person staying in same area for extended period
+- R003 Perimeter Activity (MEDIUM): Any activity in perimeter zone
+- R004 Repeat Vehicle (LOW): Same vehicle seen multiple times
+- R005 Unknown Vehicle (MEDIUM): Unrecognized vehicle in restricted area
+- R006 Suspicious Behavior (HIGH): Face covering, hiding, suspicious actions, trespassing
+
+INSTRUCTIONS:
+1. Identify ALL objects in the description (people, vehicles, animals, items)
+2. For each object, extract attributes (color, type, behavior, clothing, etc.)
+3. Check if ANY security alert rules should be triggered
+4. Provide your analysis
+
+Respond in this EXACT JSON format:
+{{
+    "objects": [
+        {{"type": "person/vehicle/animal/object", "description": "detailed description with attributes"}}
+    ],
+    "alerts": [
+        {{"rule_id": "R00X", "name": "Rule Name", "priority": "HIGH/MEDIUM/LOW", "reason": "why this alert was triggered"}}
+    ],
+    "analysis": "Brief security analysis of the scene",
+    "threat_level": "NONE/LOW/MEDIUM/HIGH/CRITICAL"
+}}
+
+If no objects are detected, return empty arrays. Be thorough - identify ALL security concerns."""
+
+        response = llm.invoke(prompt)
+        response_text = response.content if hasattr(response, 'content') else str(response)
+
+        # Parse JSON from response
+        import re
+        json_match = re.search(r'\{[\s\S]*\}', response_text)
+        if json_match:
+            result = json.loads(json_match.group())
+            return result
+        else:
+            return {"objects": [], "alerts": [], "analysis": response_text, "threat_level": "UNKNOWN"}
+
+    except Exception as e:
+        return {"objects": [], "alerts": [], "analysis": f"LLM error: {str(e)}", "threat_level": "UNKNOWN"}
+
 def extract_objects(description: str) -> list:
-    """Extract objects from frame description."""
+    """Fallback: Extract objects from frame description using keywords."""
     objects = []
     description_lower = description.lower()
 
     # Vehicle detection
-    vehicle_keywords = ["truck", "car", "van", "motorcycle", "pickup", "suv", "sedan", "camry", "f150"]
-    colors = ["blue", "red", "black", "white", "silver", "gray", "green"]
+    vehicle_keywords = ["truck", "car", "van", "motorcycle", "pickup", "suv", "sedan", "camry", "f150", "vehicle", "bike", "bicycle"]
+    colors = ["blue", "red", "black", "white", "silver", "gray", "green", "yellow", "orange", "brown"]
 
     for keyword in vehicle_keywords:
         if keyword in description_lower:
@@ -144,21 +243,46 @@ def extract_objects(description: str) -> list:
             objects.append({"type": "vehicle", "subtype": keyword, "color": color})
             break
 
-    # Person detection
-    if "person" in description_lower or "man" in description_lower or "woman" in description_lower:
-        objects.append({"type": "person", "attributes": "detected"})
+    # Person detection - expanded keywords
+    person_keywords = ["person", "man", "woman", "lady", "female", "male", "individual", "someone",
+                       "figure", "intruder", "worker", "visitor", "stranger", "people", "human",
+                       "guy", "girl", "boy", "child", "adult", "suspect", "trespasser"]
+
+    person_detected = any(kw in description_lower for kw in person_keywords)
+    if person_detected:
+        attributes = []
+        if "bag" in description_lower or "backpack" in description_lower:
+            attributes.append("carrying bag")
+        if "cover" in description_lower or "mask" in description_lower or "hiding" in description_lower:
+            attributes.append("face covered")
+        if "suspicious" in description_lower:
+            attributes.append("suspicious")
+        if "dark" in description_lower:
+            attributes.append("dark clothing")
+
+        objects.append({
+            "type": "person",
+            "attributes": ", ".join(attributes) if attributes else "detected"
+        })
+
+    if "bag" in description_lower and not person_detected:
+        objects.append({"type": "object", "subtype": "bag"})
 
     return objects
 
 def check_alerts(frame: dict) -> list:
-    """Check alert rules against frame data."""
+    """Fallback: Check alert rules against frame data using keywords."""
     alerts = []
     timestamp = datetime.fromisoformat(frame["timestamp"])
     description = frame["description"].lower()
     zone = frame["location"]["zone"]
 
-    # R001: Night Activity
-    if "person" in description and (timestamp.hour >= 0 and timestamp.hour < 5):
+    person_keywords = ["person", "man", "woman", "lady", "female", "male", "individual", "someone",
+                       "figure", "intruder", "worker", "visitor", "stranger", "people", "human",
+                       "guy", "girl", "boy", "child", "adult", "suspect", "trespasser"]
+    person_detected = any(kw in description for kw in person_keywords)
+
+    if person_detected and (timestamp.hour >= 0 and timestamp.hour < 5):
         alerts.append({
             "rule_id": "R001",
             "name": "Night Activity",
@@ -166,7 +290,16 @@ def check_alerts(frame: dict) -> list:
             "description": f"Person detected at {frame['location']['name']} during restricted hours ({timestamp.strftime('%H:%M')})"
         })
 
-    # R002: Loitering
+    suspicious_keywords = ["suspicious", "cover", "hiding", "mask", "hooded", "running", "fleeing",
+                          "trespassing", "breaking", "climbing", "sneaking"]
+    if person_detected and any(kw in description for kw in suspicious_keywords):
+        alerts.append({
+            "rule_id": "R006",
+            "name": "Suspicious Behavior",
+            "priority": "HIGH",
+            "description": f"Suspicious activity detected at {frame['location']['name']}: {frame['description'][:100]}"
+        })
+
     if "loitering" in description or "10 minutes" in description:
         alerts.append({
             "rule_id": "R002",
@@ -175,7 +308,6 @@ def check_alerts(frame: dict) -> list:
             "description": f"Person loitering detected at {frame['location']['name']}"
         })
 
-    # R003: Perimeter Activity
     if zone == "perimeter" and ("person" in description or "vehicle" in description or "truck" in description):
         alerts.append({
             "rule_id": "R003",
@@ -187,13 +319,39 @@ def check_alerts(frame: dict) -> list:
     return alerts
 
 def search_frames(query: str, frames: list) -> list:
-    """Search frames by query."""
+    """Search frames by query with smart matching."""
     query_lower = query.lower()
-    results = []
 
+    # Handle "show all" / "every frame" / "all frames" type queries
+    all_keywords = ["all frame", "every frame", "all event", "show all", "list all", "each frame", "all data"]
+    if any(kw in query_lower for kw in all_keywords):
+        return frames
+
+    # Extract meaningful search words (filter out common words)
+    stop_words = {"give", "me", "show", "find", "get", "the", "a", "an", "to", "for", "of",
+                  "information", "related", "about", "what", "where", "when", "is", "are",
+                  "was", "were", "been", "being", "have", "has", "had", "do", "does", "did",
+                  "and", "or", "but", "in", "on", "at", "by", "with", "from"}
+
+    query_words = [w for w in query_lower.split() if w not in stop_words and len(w) > 2]
+
+    results = []
     for frame in frames:
-        if query_lower in frame["description"].lower():
-            results.append(frame)
+        desc_lower = frame["description"].lower()
+        location_name = frame["location"]["name"].lower()
+        zone = frame["location"]["zone"].lower()
+
+        # Check if any query word matches description, location, or zone
+        for word in query_words:
+            if word in desc_lower or word in location_name or word in zone:
+                results.append(frame)
+                break
+
+    # If no results with word matching, try original substring match
+    if not results and query_words:
+        for frame in frames:
+            if query_lower in frame["description"].lower():
+                results.append(frame)
 
     return results
 
@@ -206,6 +364,25 @@ if "all_alerts" not in st.session_state:
 if "frame_database" not in st.session_state:
     st.session_state.frame_database = []
 
+# Initialize database and agents
+if "db" not in st.session_state:
+    if AGENTS_AVAILABLE:
+        try:
+            st.session_state.db = SecurityDatabase()
+            st.session_state.summarizer = VideoSummarizer(st.session_state.db, use_api=True)
+            st.session_state.qa_system = SecurityQA(st.session_state.db, use_api=True)
+            st.session_state.llm_available = has_api_key()
+        except Exception as e:
+            st.session_state.db = None
+            st.session_state.summarizer = None
+            st.session_state.qa_system = None
+            st.session_state.llm_available = False
+    else:
+        st.session_state.db = None
+        st.session_state.summarizer = None
+        st.session_state.qa_system = None
+        st.session_state.llm_available = False
+
 # ==================== Main UI ====================
 
 # Header
@@ -217,12 +394,17 @@ with st.sidebar:
     st.header("⚙️ Configuration")
 
     st.subheader("LLM Provider")
-    llm_provider = st.selectbox("Select Provider", ["Groq (Free)", "OpenAI"])
-
-    if llm_provider == "Groq (Free)":
-        st.info("Using: llama-3.3-70b-versatile")
+    if AGENTS_AVAILABLE and st.session_state.llm_available:
+        provider_name = LLM_PROVIDER.upper() if AGENTS_AVAILABLE else "None"
+        if provider_name == "GROQ":
+            st.success("✅ Groq API Connected")
+            st.info("Using: llama-3.3-70b-versatile")
+        else:
+            st.success("✅ OpenAI API Connected")
+            st.info("Using: gpt-4o-mini")
     else:
-        st.info("Using: gpt-4o-mini")
+        st.warning("⚠️ No LLM API configured")
+        st.info("Add GROQ_API_KEY or OPENAI_API_KEY to .env")
 
     st.divider()
 
@@ -265,15 +447,32 @@ with tab1:
             status_text = st.empty()
 
             for i, frame in enumerate(SAMPLE_FRAMES):
-                status_text.text(f"Processing Frame {frame['frame_id']}...")
+                status_text.text(f"🤖 AI Agent processing Frame {frame['frame_id']}...")
                 progress_bar.progress((i + 1) / len(SAMPLE_FRAMES))
 
-                # Simulate processing delay
-                time.sleep(0.8)
-
-                # Process frame
-                objects = extract_objects(frame["description"])
-                alerts = check_alerts(frame)
+                # Use LLM for processing if available
+                timestamp = datetime.fromisoformat(frame["timestamp"])
+                if AGENTS_AVAILABLE and has_api_key():
+                    llm_result = analyze_frame_with_llm(
+                        frame["description"],
+                        frame["location"],
+                        timestamp
+                    )
+                    objects = llm_result.get("objects", [])
+                    # Convert LLM alerts to our format
+                    llm_alerts = llm_result.get("alerts", [])
+                    alerts = []
+                    for a in llm_alerts:
+                        alerts.append({
+                            "rule_id": a.get("rule_id", "R000"),
+                            "name": a.get("name", "Alert"),
+                            "priority": a.get("priority", "MEDIUM"),
+                            "description": a.get("reason", "Security concern detected")
+                        })
+                else:
+                    # Fallback to keyword matching
+                    objects = extract_objects(frame["description"])
+                    alerts = check_alerts(frame)
 
                 processed = {
                     **frame,
@@ -286,8 +485,34 @@ with tab1:
                 st.session_state.frame_database.append(processed)
                 st.session_state.all_alerts.extend(alerts)
 
+                # Save to actual database for AI queries
+                if AGENTS_AVAILABLE and st.session_state.db:
+                    try:
+                        # Save frame to database
+                        st.session_state.db.index_frame(
+                            frame_id=frame["frame_id"],
+                            timestamp=datetime.fromisoformat(frame["timestamp"]),
+                            location_name=frame["location"]["name"],
+                            location_zone=frame["location"]["zone"],
+                            description=frame["description"],
+                            objects=objects,
+                            telemetry=frame.get("telemetry", {})
+                        )
+                        # Save alerts to database
+                        for alert in alerts:
+                            st.session_state.db.add_alert(
+                                frame_id=frame["frame_id"],
+                                rule_id=alert["rule_id"],
+                                priority=alert["priority"],
+                                description=alert["description"]
+                            )
+                    except Exception as e:
+                        pass  # Continue even if DB save fails
+
             status_text.text("✅ Demo complete!")
             st.success(f"Processed {len(SAMPLE_FRAMES)} frames, generated {len(st.session_state.all_alerts)} alerts")
+            if AGENTS_AVAILABLE and st.session_state.db:
+                st.info("💾 Data saved to database - AI queries now available!")
             st.rerun()
 
     with col2:
@@ -295,12 +520,20 @@ with tab1:
             st.subheader("Recent Detections")
             for frame in st.session_state.processed_frames[-3:]:
                 with st.container():
+                    # Format objects for display (handle both LLM and fallback format)
+                    obj_list = []
+                    for o in frame.get('objects', []):
+                        if 'description' in o:
+                            obj_list.append(f"{o['type']}: {o['description'][:30]}")
+                        else:
+                            obj_list.append(o.get('type', 'unknown'))
+
                     st.markdown(f"""
                     <div class="frame-box">
                         <strong>Frame {frame['frame_id']}</strong> | {frame['timestamp']}<br>
                         📍 {frame['location']['name']} ({frame['location']['zone']})<br>
                         📝 {frame['description']}<br>
-                        🎯 Objects: {', '.join([f"{o['type']}" for o in frame['objects']]) or 'None detected'}
+                        🎯 Objects: {', '.join(obj_list) or 'None detected'}
                     </div>
                     """, unsafe_allow_html=True)
 
@@ -330,7 +563,8 @@ with tab2:
         custom_desc = st.text_area(
             "Frame Description",
             value="Blue Ford F150 pickup truck entering through main gate",
-            height=100
+            height=100,
+            help="Describe what's in the frame. Use keywords like: person, man, woman, lady, female, truck, car, suspicious, covering face, bag, etc."
         )
 
         col_a, col_b = st.columns(2)
@@ -339,23 +573,50 @@ with tab2:
         with col_b:
             zone = st.selectbox("Zone", ["perimeter", "storage", "parking", "main"])
 
-        hour = st.slider("Hour of Day", 0, 23, 12)
+        # Full date and time input
+        st.write("**📅 Timestamp:**")
+        col_date, col_time = st.columns(2)
+        with col_date:
+            frame_date = st.date_input("Date", value=datetime.now().date())
+        with col_time:
+            frame_time = st.time_input("Time", value=datetime.now().time())
 
-        if st.button("🔬 Analyze Frame", type="primary"):
-            # Create frame
+        if st.button("🔬 Analyze Frame with AI", type="primary"):
+            # Create frame with full datetime
+            full_timestamp = datetime.combine(frame_date, frame_time)
             test_frame = {
                 "frame_id": random.randint(100, 999),
-                "timestamp": f"2024-01-15T{hour:02d}:30:00",
+                "timestamp": full_timestamp.isoformat(),
                 "description": custom_desc,
                 "location": {"name": location_name, "zone": zone},
                 "telemetry": {"altitude": 50, "battery": 90, "drone_id": "DRONE-001"}
             }
 
-            st.session_state.current_analysis = {
-                "frame": test_frame,
-                "objects": extract_objects(custom_desc),
-                "alerts": check_alerts(test_frame)
-            }
+            # Use LLM for analysis if available
+            if AGENTS_AVAILABLE and has_api_key():
+                with st.spinner("🤖 AI Agent analyzing frame..."):
+                    llm_result = analyze_frame_with_llm(
+                        custom_desc,
+                        {"name": location_name, "zone": zone},
+                        full_timestamp
+                    )
+                    st.session_state.current_analysis = {
+                        "frame": test_frame,
+                        "llm_analysis": llm_result,
+                        "objects": llm_result.get("objects", []),
+                        "alerts": llm_result.get("alerts", []),
+                        "analysis_text": llm_result.get("analysis", ""),
+                        "threat_level": llm_result.get("threat_level", "UNKNOWN"),
+                        "used_llm": True
+                    }
+            else:
+                # Fallback to keyword matching
+                st.session_state.current_analysis = {
+                    "frame": test_frame,
+                    "objects": extract_objects(custom_desc),
+                    "alerts": check_alerts(test_frame),
+                    "used_llm": False
+                }
 
     with col2:
         st.subheader("Output: Analysis Results")
@@ -363,14 +624,46 @@ with tab2:
         if "current_analysis" in st.session_state:
             analysis = st.session_state.current_analysis
 
+            # Show if LLM was used
+            if analysis.get("used_llm"):
+                st.success("🤖 **AI Agent Analysis** (Powered by LLM)")
+
+                # Show threat level
+                threat_level = analysis.get("threat_level", "UNKNOWN")
+                threat_colors = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🟢", "NONE": "⚪"}
+                st.markdown(f"**Threat Level:** {threat_colors.get(threat_level, '❓')} **{threat_level}**")
+
+                # Show AI analysis text
+                if analysis.get("analysis_text"):
+                    st.markdown(f"""
+                    <div class="frame-box">
+                        <strong>🧠 AI Analysis:</strong><br>
+                        {analysis['analysis_text']}
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.info("⚡ Fallback Analysis (keyword-based)")
+
             # Show detected objects
             st.write("**🎯 Detected Objects:**")
             if analysis["objects"]:
                 for obj in analysis["objects"]:
+                    # Handle both LLM format and fallback format
+                    obj_type = obj.get('type', 'unknown')
+                    if 'description' in obj:
+                        # LLM format
+                        detail = f" - {obj['description']}"
+                    elif obj_type == 'vehicle':
+                        detail = f" - {obj.get('subtype', '')} ({obj.get('color', '')})"
+                    elif obj_type == 'person':
+                        attrs = obj.get('attributes', 'detected')
+                        detail = f" - {attrs}" if attrs else ""
+                    else:
+                        detail = f" - {obj.get('subtype', '')}" if obj.get('subtype') else ""
+
                     st.markdown(f"""
                     <div class="detection-box">
-                        <strong>{obj['type'].title()}</strong>
-                        {f" - {obj.get('subtype', '')} ({obj.get('color', '')})" if obj['type'] == 'vehicle' else ''}
+                        <strong>{obj_type.title()}</strong>{detail}
                     </div>
                     """, unsafe_allow_html=True)
             else:
@@ -380,12 +673,17 @@ with tab2:
             st.write("**⚠️ Triggered Alerts:**")
             if analysis["alerts"]:
                 for alert in analysis["alerts"]:
-                    priority_class = f"alert-{alert['priority'].lower()}"
+                    priority = alert.get('priority', 'MEDIUM')
+                    priority_class = f"alert-{priority.lower()}"
+                    rule_id = alert.get('rule_id', 'N/A')
+                    name = alert.get('name', 'Alert')
+                    # Handle both LLM format (reason) and fallback format (description)
+                    desc = alert.get('reason', alert.get('description', ''))
                     st.markdown(f"""
                     <div class="{priority_class}">
-                        <strong>[{alert['priority']}] {alert['name']}</strong><br>
-                        Rule: {alert['rule_id']}<br>
-                        {alert['description']}
+                        <strong>[{priority}] {name}</strong><br>
+                        Rule: {rule_id}<br>
+                        {desc}
                     </div>
                     """, unsafe_allow_html=True)
             else:
@@ -436,11 +734,36 @@ with tab4:
     st.header("🔎 Query Frame Database")
     st.write("Search through indexed frames using natural language queries.")
 
-    query = st.text_input("Enter your query", placeholder="e.g., 'show all truck events' or 'person near warehouse'")
+    # LLM-powered query section
+    if st.session_state.llm_available and st.session_state.qa_system:
+        st.subheader("🤖 AI-Powered Query")
+        ai_query = st.text_input("Ask the AI about surveillance data", placeholder="e.g., 'What vehicles were detected?' or 'Any security alerts?'", key="ai_query")
+
+        if st.button("🧠 Ask AI", type="primary"):
+            if ai_query:
+                with st.spinner("AI is analyzing..."):
+                    try:
+                        answer = st.session_state.qa_system.answer(ai_query)
+                        st.markdown(f"""
+                        <div class="frame-box">
+                            <strong>🤖 AI Response:</strong><br>
+                            {answer.replace(chr(10), '<br>')}
+                        </div>
+                        """, unsafe_allow_html=True)
+                    except Exception as e:
+                        st.error(f"AI query failed: {e}")
+            else:
+                st.warning("Please enter a question")
+
+        st.divider()
+
+    # Simple text search
+    st.subheader("🔍 Text Search")
+    query = st.text_input("Enter your query", placeholder="e.g., 'show all truck events' or 'person near warehouse'", key="text_query")
 
     col1, col2 = st.columns(2)
     with col1:
-        search_button = st.button("🔍 Search", type="primary")
+        search_button = st.button("🔍 Search", type="primary", key="search_btn")
     with col2:
         show_all = st.button("📋 Show All Frames")
 
@@ -500,7 +823,25 @@ with tab5:
     st.header("📝 Video Summary")
     st.write("AI-generated summary of surveillance activity.")
 
-    if st.button("📊 Generate Summary", type="primary"):
+    # LLM-powered summary
+    if st.session_state.llm_available and st.session_state.summarizer:
+        if st.button("🤖 Generate AI Summary", type="primary"):
+            with st.spinner("AI is generating summary..."):
+                try:
+                    ai_summary = st.session_state.summarizer.summarize_session()
+                    st.subheader("🤖 AI-Generated Summary")
+                    st.markdown(f"""
+                    <div class="frame-box">
+                        {ai_summary.replace(chr(10), '<br>')}
+                    </div>
+                    """, unsafe_allow_html=True)
+                except Exception as e:
+                    st.error(f"AI summary failed: {e}")
+                    st.info("Falling back to basic summary...")
+
+        st.divider()
+
+    if st.button("📊 Generate Basic Summary", type="secondary" if st.session_state.llm_available else "primary"):
         if st.session_state.frame_database:
             # Generate summary
             total_frames = len(st.session_state.frame_database)
@@ -557,41 +898,56 @@ with tab5:
     st.divider()
     st.subheader("❓ Follow-up Questions")
 
-    question = st.text_input("Ask a question about the surveillance data", placeholder="e.g., 'What objects were detected?'")
+    question = st.text_input("Ask a question about the surveillance data", placeholder="e.g., 'What objects were detected?'", key="summary_question")
 
-    if st.button("Ask") and question:
-        question_lower = question.lower()
-
-        if "object" in question_lower or "detect" in question_lower:
-            st.write("**Answer:** The following objects were detected during surveillance:")
-            objects_found = set()
-            for frame in st.session_state.frame_database:
-                for obj in frame.get("objects", []):
-                    if obj["type"] == "vehicle":
-                        objects_found.add(f"Vehicle ({obj.get('subtype', 'unknown')} - {obj.get('color', 'unknown')})")
-                    else:
-                        objects_found.add(obj["type"].title())
-
-            for obj in objects_found:
-                st.write(f"- {obj}")
-
-        elif "alert" in question_lower:
-            st.write(f"**Answer:** {len(st.session_state.all_alerts)} alerts were generated.")
-            for alert in st.session_state.all_alerts:
-                st.write(f"- [{alert['priority']}] {alert['name']}: {alert['description']}")
-
-        elif "truck" in question_lower:
-            truck_frames = [f for f in st.session_state.frame_database if "truck" in f["description"].lower()]
-            st.write(f"**Answer:** {len(truck_frames)} frame(s) contain truck detections.")
-
+    if st.button("Ask", key="summary_ask") and question:
+        # Use LLM if available
+        if st.session_state.llm_available and st.session_state.qa_system:
+            with st.spinner("AI is thinking..."):
+                try:
+                    answer = st.session_state.qa_system.answer(question)
+                    st.markdown(f"""
+                    <div class="frame-box">
+                        <strong>🤖 AI Answer:</strong><br>
+                        {answer.replace(chr(10), '<br>')}
+                    </div>
+                    """, unsafe_allow_html=True)
+                except Exception as e:
+                    st.error(f"AI query failed: {e}")
         else:
-            st.write("**Answer:** I can answer questions about detected objects, alerts, vehicles, and persons. Try asking about specific items!")
+            # Fallback to basic keyword matching
+            question_lower = question.lower()
+
+            if "object" in question_lower or "detect" in question_lower:
+                st.write("**Answer:** The following objects were detected during surveillance:")
+                objects_found = set()
+                for frame in st.session_state.frame_database:
+                    for obj in frame.get("objects", []):
+                        if obj["type"] == "vehicle":
+                            objects_found.add(f"Vehicle ({obj.get('subtype', 'unknown')} - {obj.get('color', 'unknown')})")
+                        else:
+                            objects_found.add(obj["type"].title())
+
+                for obj in objects_found:
+                    st.write(f"- {obj}")
+
+            elif "alert" in question_lower:
+                st.write(f"**Answer:** {len(st.session_state.all_alerts)} alerts were generated.")
+                for alert in st.session_state.all_alerts:
+                    st.write(f"- [{alert['priority']}] {alert['name']}: {alert['description']}")
+
+            elif "truck" in question_lower:
+                truck_frames = [f for f in st.session_state.frame_database if "truck" in f["description"].lower()]
+                st.write(f"**Answer:** {len(truck_frames)} frame(s) contain truck detections.")
+
+            else:
+                st.write("**Answer:** I can answer questions about detected objects, alerts, vehicles, and persons. Try asking about specific items!")
 
 # Footer
 st.divider()
 st.markdown("""
-<div style="text-align: center; color: #666; font-size: 0.9rem;">
-    🛡️ Drone Security Analyst Agent | Built with LangChain + LangGraph + Groq<br>
-    FlytBase AI Engineer Assignment
+<div style="text-align: center; color: #555555 !important; font-size: 0.9rem; background-color: rgba(240,242,246,0.8); padding: 1rem; border-radius: 8px;">
+    <span style="color: #1E88E5;">🛡️ Drone Security Analyst Agent</span> | Built with LangChain + LangGraph + Groq<br>
+    <span style="color: #333333;">FlytBase AI Engineer Assignment</span>
 </div>
 """, unsafe_allow_html=True)

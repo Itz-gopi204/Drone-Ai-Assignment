@@ -11,7 +11,46 @@ from typing import Dict, List, Optional, Any
 import json
 
 from .database import SecurityDatabase, FrameRecord
-from .config import OPENAI_API_KEY, MODEL_NAME
+from .config import (
+    OPENAI_API_KEY, MODEL_NAME, LLM_PROVIDER,
+    GROQ_API_KEY, GROQ_MODEL_NAME
+)
+
+
+def get_llm():
+    """Get the configured LLM based on provider setting."""
+    # Try Groq first if configured
+    if LLM_PROVIDER == "groq" and GROQ_API_KEY:
+        try:
+            from langchain_groq import ChatGroq
+            return ChatGroq(
+                model=GROQ_MODEL_NAME,
+                temperature=0.3,
+                api_key=GROQ_API_KEY
+            )
+        except ImportError:
+            print("langchain-groq not installed. Run: pip install langchain-groq")
+
+    # Fall back to OpenAI
+    if OPENAI_API_KEY:
+        try:
+            from langchain_openai import ChatOpenAI
+            return ChatOpenAI(
+                model=MODEL_NAME,
+                temperature=0.3,
+                api_key=OPENAI_API_KEY
+            )
+        except ImportError:
+            print("langchain-openai not installed")
+
+    return None
+
+
+def has_api_key():
+    """Check if any LLM API key is configured."""
+    if LLM_PROVIDER == "groq":
+        return bool(GROQ_API_KEY)
+    return bool(OPENAI_API_KEY)
 
 
 class VideoSummarizer:
@@ -31,7 +70,8 @@ class VideoSummarizer:
             use_api: Whether to use LLM API for enhanced summaries
         """
         self.database = database
-        self.use_api = use_api and bool(OPENAI_API_KEY)
+        self.use_api = use_api and has_api_key()
+        self.llm = None
 
         if self.use_api:
             self._init_llm()
@@ -39,12 +79,9 @@ class VideoSummarizer:
     def _init_llm(self):
         """Initialize LLM for enhanced summarization."""
         try:
-            from langchain_openai import ChatOpenAI
-            self.llm = ChatOpenAI(
-                model=MODEL_NAME,
-                temperature=0.3,
-                api_key=OPENAI_API_KEY
-            )
+            self.llm = get_llm()
+            if not self.llm:
+                self.use_api = False
         except Exception as e:
             print(f"Failed to initialize LLM: {e}")
             self.use_api = False
@@ -242,7 +279,8 @@ class SecurityQA:
             use_api: Whether to use LLM for enhanced responses
         """
         self.database = database
-        self.use_api = use_api and bool(OPENAI_API_KEY)
+        self.use_api = use_api and has_api_key()
+        self.llm = None
 
         if self.use_api:
             self._init_llm()
@@ -250,12 +288,9 @@ class SecurityQA:
     def _init_llm(self):
         """Initialize LLM for Q&A."""
         try:
-            from langchain_openai import ChatOpenAI
-            self.llm = ChatOpenAI(
-                model=MODEL_NAME,
-                temperature=0.3,
-                api_key=OPENAI_API_KEY
-            )
+            self.llm = get_llm()
+            if not self.llm:
+                self.use_api = False
         except Exception as e:
             print(f"Failed to initialize LLM: {e}")
             self.use_api = False
