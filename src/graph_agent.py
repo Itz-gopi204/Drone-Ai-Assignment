@@ -1104,6 +1104,142 @@ class SecurityAgentGraph:
             'response': result.get('response', '')
         }
 
+    def process_image(
+        self,
+        image_data,
+        location: Dict = None,
+        timestamp: datetime = None,
+        frame_id: int = None
+    ) -> Dict:
+        """
+        Process an actual image through the vision pipeline.
+
+        This is the BEST approach - sends actual image to GPT-4 Vision
+        for complete security analysis in ONE API call.
+
+        Args:
+            image_data: PIL Image, numpy array, or path to image file
+            location: Location info {"name": "...", "zone": "..."}
+            timestamp: Frame timestamp (defaults to now)
+            frame_id: Frame identifier (auto-generated if not provided)
+
+        Returns:
+            Complete analysis including objects, alerts, and threat level
+        """
+        try:
+            from .vision_pipeline import DirectVisionPipeline, PipelineConfig
+        except ImportError:
+            logger.warning("Vision pipeline not available, falling back to description-based analysis")
+            return {"error": "Vision pipeline not available"}
+
+        # Set defaults
+        location = location or {"name": "Unknown", "zone": "unknown"}
+        timestamp = timestamp or datetime.now()
+        frame_id = frame_id or 1
+
+        # Create pipeline with appropriate provider
+        provider = "direct" if self.use_api else "simulated"
+        config = PipelineConfig(
+            provider=provider,
+            store_to_database=True
+        )
+
+        pipeline = DirectVisionPipeline(config=config, database=self.database)
+
+        # Analyze the image
+        result = pipeline.analyze_frame(
+            frame_data=image_data,
+            location=location,
+            timestamp=timestamp,
+            frame_id=frame_id
+        )
+
+        # Index in vector store if available
+        if self.vector_store:
+            try:
+                self.vector_store.add_frame(
+                    frame_id=result.frame_id,
+                    timestamp=result.timestamp,
+                    description=result.description,
+                    objects=result.objects,
+                    location_name=location.get('name', 'Unknown'),
+                    location_zone=location.get('zone', ''),
+                    alert_triggered=bool(result.alerts)
+                )
+            except Exception as e:
+                logger.warning(f"Failed to index in vector store: {e}")
+
+        return {
+            'frame_id': result.frame_id,
+            'timestamp': result.timestamp.isoformat(),
+            'description': result.description,
+            'objects': result.objects,
+            'alerts': result.alerts,
+            'analysis': result.analysis,
+            'threat_level': result.threat_level,
+            'provider': result.provider,
+            'processing_time_ms': result.processing_time_ms
+        }
+
+    def process_video(
+        self,
+        video_path: str,
+        frame_interval: int = 5,
+        max_frames: int = 50,
+        progress_callback=None
+    ) -> List[Dict]:
+        """
+        Process a video file through the vision pipeline.
+
+        Extracts frames and sends each to GPT-4 Vision for complete analysis.
+
+        Args:
+            video_path: Path to video file
+            frame_interval: Seconds between frame extraction
+            max_frames: Maximum frames to extract
+            progress_callback: Optional callback(current, total, result)
+
+        Returns:
+            List of analysis results for each frame
+        """
+        try:
+            from .vision_pipeline import DirectVisionPipeline, PipelineConfig
+        except ImportError:
+            logger.warning("Vision pipeline not available")
+            return [{"error": "Vision pipeline not available"}]
+
+        # Create pipeline
+        provider = "direct" if self.use_api else "simulated"
+        config = PipelineConfig(
+            provider=provider,
+            frame_interval_seconds=frame_interval,
+            max_frames=max_frames,
+            store_to_database=True
+        )
+
+        pipeline = DirectVisionPipeline(config=config, database=self.database)
+
+        # Process video
+        results = pipeline.process_video(video_path, progress_callback)
+
+        # Index in vector store
+        if self.vector_store:
+            for result in results:
+                try:
+                    self.vector_store.add_frame(
+                        frame_id=result.frame_id,
+                        timestamp=result.timestamp,
+                        description=result.description,
+                        objects=result.objects,
+                        location_name=result.location.get('name', 'Unknown'),
+                        location_zone=result.location.get('zone', ''),
+                        alert_triggered=bool(result.alerts)
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to index frame {result.frame_id} in vector store: {e}")
+
+        return [r.to_dict() for r in results]
+
     def chat(self, user_message: str) -> str:
         """
         Chat with the agent using natural language.

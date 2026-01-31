@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drone Security Analyst Agent - Technical Report</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px;
+            color: #333;
+        }
+        h1 { color: #1a365d; border-bottom: 3px solid #2563eb; padding-bottom: 10px; }
+        h2 { color: #1e40af; margin-top: 30px; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
+        h3 { color: #3b82f6; }
+        table { border-collapse: collapse; width: 100%; margin: 15px 0; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        th { background-color: #f3f4f6; }
+        code { background-color: #f3f4f6; padding: 2px 6px; border-radius: 3px; font-family: monospace; }
+        pre { background-color: #1f2937; color: #e5e7eb; padding: 15px; border-radius: 5px; overflow-x: auto; }
+        pre code { background: none; color: inherit; }
+        .highlight { background-color: #fef3c7; padding: 15px; border-left: 4px solid #f59e0b; margin: 15px 0; }
+        .section { page-break-inside: avoid; }
+        @media print {
+            body { padding: 20px; }
+            h1, h2 { page-break-after: avoid; }
+            table, pre { page-break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+
+<h1>Drone Security Analyst Agent</h1>
+<h2 style="border: none; color: #666;">Technical Report & Documentation</h2>
+
+<p><strong>Assignment:</strong> FlytBase AI Engineer - Take Home Assessment</p>
+<p><strong>Candidate:</strong> Gopi</p>
+<p><strong>Date:</strong> January 2025</p>
+
+<hr>
+
+<h2>Table of Contents</h2>
+<ol>
+    <li><a href="#summary">Executive Summary</a></li>
+    <li><a href="#approach">Problem Statement & Approach</a></li>
+    <li><a href="#assumptions">Assumptions Made</a></li>
+    <li><a href="#tools">Tool & Technology Justifications</a></li>
+    <li><a href="#architecture">Solution Architecture</a></li>
+    <li><a href="#vlm">VLM Integration & Video Processing</a></li>
+    <li><a href="#alerts">Security Alert Rules</a></li>
+    <li><a href="#results">Results & Examples</a></li>
+    <li><a href="#testing">Testing Strategy</a></li>
+    <li><a href="#improvements">What Could Be Done Better</a></li>
+    <li><a href="#ai-tools">AI Tools Usage</a></li>
+    <li><a href="#conclusion">Conclusion</a></li>
+</ol>
+
+<hr>
+
+<div class="section" id="summary">
+<h2>1. Executive Summary</h2>
+
+<p>This report documents the design and implementation of a <strong>Drone Security Analyst Agent</strong> prototype for automated property surveillance. The system processes simulated drone telemetry and video frame data to provide real-time security monitoring, object detection, and intelligent alerting.</p>
+
+<h3>Key Deliverables</h3>
+
+<table>
+    <tr><th>Requirement</th><th>Status</th><th>Implementation</th></tr>
+    <tr><td>Simulated Telemetry & Video Frames</td><td>Complete</td><td>simulator.py - GPS, altitude, battery, frame descriptions</td></tr>
+    <tr><td>Object Detection & Logging</td><td>Complete</td><td>analyzer.py + LLM-powered analysis</td></tr>
+    <tr><td>Real-time Security Alerts</td><td>Complete</td><td>alert_engine.py - 6 configurable rules</td></tr>
+    <tr><td>Frame-by-Frame Indexing</td><td>Complete</td><td>SQLite + ChromaDB dual storage</td></tr>
+    <tr><td>Natural Language Queries</td><td>Complete</td><td>LangChain agent with semantic search</td></tr>
+    <tr><td>Video Summarization (Bonus)</td><td>Complete</td><td>VideoSummarizer class</td></tr>
+    <tr><td>Follow-up Q&A (Bonus)</td><td>Complete</td><td>SecurityQA class</td></tr>
+</table>
+
+<h3>Technical Highlights</h3>
+<ul>
+    <li><strong>LLM-Powered Analysis:</strong> Groq API with Llama 3.3-70B for intelligent frame analysis</li>
+    <li><strong>Multi-Agent System:</strong> LangGraph orchestration with supervisor pattern</li>
+    <li><strong>Dual Storage:</strong> SQLite for structured data + ChromaDB for semantic search</li>
+    <li><strong>Interactive Dashboard:</strong> Streamlit web UI with 5 functional tabs</li>
+    <li><strong>Comprehensive Testing:</strong> 142 test cases across 7 test files</li>
+</ul>
+</div>
+
+<div class="section" id="approach">
+<h2>2. Problem Statement & Approach</h2>
+
+<h3>Assignment Requirements</h3>
+<p>Build a prototype Drone Security Analyst Agent that:</p>
+<ol>
+    <li><strong>Processes drone data</strong> - Simulates telemetry (GPS, altitude, battery) and video frames</li>
+    <li><strong>Detects objects</strong> - Identifies vehicles, people, and security-relevant objects</li>
+    <li><strong>Generates alerts</strong> - Triggers real-time alerts based on predefined security rules</li>
+    <li><strong>Indexes frames</strong> - Stores all frames in a queryable database</li>
+    <li><strong>Answers queries</strong> - Responds to natural language questions about surveillance data</li>
+</ol>
+
+<h3>My Approach</h3>
+<p>I approached this as a <strong>production-ready prototype</strong> with:</p>
+<ul>
+    <li>Modular architecture for easy component replacement</li>
+    <li>Multiple LLM provider support (Groq free tier + OpenAI fallback)</li>
+    <li>Both keyword-based and AI-powered analysis paths</li>
+    <li>Comprehensive test coverage for reliability</li>
+    <li>Interactive web interface for demonstration</li>
+</ul>
+</div>
+
+<div class="section" id="assumptions">
+<h2>3. Assumptions Made</h2>
+
+<h3>3.1 Video Frame Simulation</h3>
+<p><strong>Assumption:</strong> The assignment explicitly states "Simulate video frames with text descriptions."</p>
+<p><strong>Implementation:</strong> Instead of processing actual video files with a real VLM, I implemented:</p>
+<ul>
+    <li>Simulated frames with text descriptions (e.g., "Blue Ford F150 at main gate")</li>
+    <li>VLM-ready architecture that can process real video when BLIP-2 is available</li>
+    <li>Hybrid approach supporting both simulated and real video input</li>
+</ul>
+
+<h3>3.2 LLM Provider Selection</h3>
+<p><strong>Assumption:</strong> Access to free or low-cost LLM APIs is preferred for evaluation.</p>
+<p><strong>Implementation:</strong></p>
+<ul>
+    <li><strong>Primary:</strong> Groq API with Llama 3.3-70B (free tier available)</li>
+    <li><strong>Fallback:</strong> OpenAI GPT-4o-mini (for those with existing keys)</li>
+    <li><strong>Offline:</strong> Keyword-based analysis when no API available</li>
+</ul>
+
+<h3>3.3 Security Alert Rules</h3>
+<p><strong>Assumption:</strong> Property surveillance requires specific security rules based on common scenarios.</p>
+<p><strong>Implementation:</strong> 6 rules covering night-time activity (R001), loitering detection (R002), perimeter breaches (R003), repeat vehicle tracking (R004), unknown vehicle detection (R005), and suspicious behavior (R006).</p>
+
+<h3>3.4 Dataset</h3>
+<p><strong>Assumption:</strong> No pre-existing surveillance dataset was provided.</p>
+<p><strong>Implementation:</strong> Created realistic sample scenarios in simulator.py with curated demo frames covering various security events.</p>
+</div>
+
+<div class="section" id="tools">
+<h2>4. Tool & Technology Justifications</h2>
+
+<h3>4.1 Why BLIP-2 over CLIP for VLM?</h3>
+
+<table>
+    <tr><th>Aspect</th><th>CLIP</th><th>BLIP-2</th><th>Our Choice</th></tr>
+    <tr><td>Output Type</td><td>Similarity scores</td><td>Natural language captions</td><td><strong>BLIP-2</strong></td></tr>
+    <tr><td>Example Output</td><td>"truck: 95%, person: 87%"</td><td>"Blue Ford F150 entering gate"</td><td><strong>BLIP-2</strong></td></tr>
+    <tr><td>Security Analysis</td><td>Requires label matching</td><td>Direct description for LLM</td><td><strong>BLIP-2</strong></td></tr>
+</table>
+
+<p><strong>Why BLIP-2 is better for security analysis:</strong></p>
+<ul>
+    <li>CLIP outputs classification labels that lose context and relationships</li>
+    <li>BLIP-2 outputs full descriptions like "Person in dark hoodie climbing over fence at night"</li>
+    <li>Rich descriptions enable LLM to perform nuanced security reasoning</li>
+</ul>
+
+<h3>4.2 Why LangChain + LangGraph for Agent Design?</h3>
+
+<table>
+    <tr><th>Requirement</th><th>Solution</th><th>Justification</th></tr>
+    <tr><td>Tool integration</td><td>LangChain</td><td>Built-in tool management, function calling</td></tr>
+    <tr><td>Multi-agent orchestration</td><td>LangGraph</td><td>Supervisor pattern, state management</td></tr>
+    <tr><td>Human-in-the-loop</td><td>LangGraph</td><td>Interrupt capability, review gates</td></tr>
+    <tr><td>LLM flexibility</td><td>Both</td><td>Easy provider switching (Groq/OpenAI)</td></tr>
+</table>
+
+<h3>4.3 Why SQLite + ChromaDB (Dual Storage)?</h3>
+
+<table>
+    <tr><th>Query Type</th><th>SQLite</th><th>ChromaDB</th></tr>
+    <tr><td>"Alerts after 10 PM"</td><td>SQL filter</td><td>-</td></tr>
+    <tr><td>"Trucks at gate"</td><td>LIKE query</td><td>Semantic match</td></tr>
+    <tr><td>"Suspicious activity"</td><td>Keywords only</td><td>Semantic understanding</td></tr>
+    <tr><td>"Similar events"</td><td>-</td><td>Vector similarity</td></tr>
+</table>
+
+<h3>4.4 Why Groq over OpenAI as Default?</h3>
+
+<table>
+    <tr><th>Factor</th><th>Groq</th><th>OpenAI</th></tr>
+    <tr><td>Cost</td><td>Free tier available</td><td>Requires payment</td></tr>
+    <tr><td>Speed</td><td>~500 tokens/sec</td><td>~100 tokens/sec</td></tr>
+    <tr><td>Model</td><td>Llama 3.3-70B</td><td>GPT-4o-mini</td></tr>
+</table>
+</div>
+
+<div class="section" id="vlm">
+<h2>5. VLM Integration & Video Processing</h2>
+
+<h3>5.1 Two Processing Strategies</h3>
+
+<table>
+    <tr><th>Strategy</th><th>Pipeline</th><th>Cost</th><th>Best For</th></tr>
+    <tr><td><strong>Batch (Recommended)</strong></td><td>BLIP (local) → Groq LLM</td><td><strong>FREE</strong></td><td>Production, cost-sensitive</td></tr>
+    <tr><td>Direct</td><td>GPT-4 Vision per frame</td><td>~$0.02/frame</td><td>Highest accuracy</td></tr>
+</table>
+
+<h3>5.2 Batch Pipeline (Cost-Effective - RECOMMENDED)</h3>
+
+<div class="highlight">
+<strong>Key Innovation:</strong> Instead of calling an API per frame, we:
+<ol>
+    <li>Extract frames locally with OpenCV</li>
+    <li>Generate text descriptions with local BLIP model (FREE)</li>
+    <li>Send ALL descriptions to Groq in ONE API call (FREE)</li>
+</ol>
+</div>
+
+<h3>Cost Comparison</h3>
+<table>
+    <tr><th>Frames</th><th>GPT-4 Vision (Direct)</th><th>Batch Pipeline</th></tr>
+    <tr><td>10</td><td>$0.20</td><td><strong>$0.00</strong></td></tr>
+    <tr><td>50</td><td>$1.00</td><td><strong>$0.00</strong></td></tr>
+    <tr><td>100</td><td>$2.00</td><td><strong>$0.00</strong></td></tr>
+</table>
+
+<h3>GPU Memory Auto-Detection</h3>
+<p>The system automatically selects the appropriate BLIP model based on available GPU memory:</p>
+<ul>
+    <li><strong>4GB GPU:</strong> Uses BLIP (smaller model) - Salesforce/blip-image-captioning-base</li>
+    <li><strong>8GB+ GPU:</strong> Uses BLIP-2 (better quality) - Salesforce/blip2-opt-2.7b</li>
+</ul>
+</div>
+
+<div class="section" id="alerts">
+<h2>6. Security Alert Rules</h2>
+
+<table>
+    <tr><th>Rule ID</th><th>Name</th><th>Priority</th><th>Condition</th></tr>
+    <tr><td>R001</td><td>Night Activity</td><td>HIGH</td><td>Person detected between 00:00-05:00</td></tr>
+    <tr><td>R002</td><td>Loitering Detection</td><td>HIGH</td><td>Same person in same zone > 5 minutes</td></tr>
+    <tr><td>R003</td><td>Perimeter Activity</td><td>MEDIUM</td><td>Any activity in perimeter zone</td></tr>
+    <tr><td>R004</td><td>Repeat Vehicle</td><td>LOW</td><td>Same vehicle detected > 2 times in 24h</td></tr>
+    <tr><td>R005</td><td>Unknown Vehicle</td><td>MEDIUM</td><td>Unrecognized vehicle in restricted area</td></tr>
+    <tr><td>R006</td><td>Suspicious Behavior</td><td>HIGH</td><td>Face covering, hiding, trespassing</td></tr>
+</table>
+</div>
+
+<div class="section" id="results">
+<h2>7. Results & Examples</h2>
+
+<h3>7.1 Sample Frame Processing</h3>
+
+<p><strong>Input Frame:</strong></p>
+<ul>
+    <li>Description: "Blue Ford F150 pickup truck entering through main gate"</li>
+    <li>Location: Main Gate (perimeter zone)</li>
+    <li>Timestamp: 2024-01-15 10:15:30</li>
+</ul>
+
+<p><strong>Agent Analysis Output:</strong></p>
+<pre><code>{
+    "objects": [
+        {"type": "vehicle", "subtype": "pickup truck",
+         "color": "blue", "make": "Ford F150"}
+    ],
+    "alerts": [
+        {"rule_id": "R003", "name": "Perimeter Activity",
+         "priority": "MEDIUM"}
+    ],
+    "threat_level": "LOW"
+}</code></pre>
+
+<h3>7.2 Security Alert Examples</h3>
+
+<table>
+    <tr><th>Scenario</th><th>Input</th><th>Triggered Alerts</th><th>Threat Level</th></tr>
+    <tr><td>Night Activity</td><td>"Person at warehouse, 2:30 AM"</td><td>R001 (Night), R002 (Loitering)</td><td>HIGH</td></tr>
+    <tr><td>Suspicious Behavior</td><td>"Person covering face near fence"</td><td>R006 (Suspicious), R003 (Perimeter)</td><td>HIGH</td></tr>
+    <tr><td>Normal Vehicle</td><td>"Delivery van at loading dock, 10 AM"</td><td>None</td><td>NONE</td></tr>
+    <tr><td>Repeat Vehicle</td><td>"Blue truck seen 3rd time today"</td><td>R004 (Repeat Vehicle)</td><td>LOW</td></tr>
+</table>
+
+<h3>7.3 Query Examples</h3>
+
+<p><strong>Query:</strong> "What vehicles were detected today?"</p>
+<p><strong>Response:</strong> Based on the surveillance data: Blue Ford F150 pickup truck at Main Gate (10:15), Red Toyota Camry at Parking Lot (14:45). Total: 2 vehicles detected.</p>
+</div>
+
+<div class="section" id="testing">
+<h2>8. Testing Strategy</h2>
+
+<h3>8.1 Test Coverage Summary</h3>
+
+<table>
+    <tr><th>Test File</th><th>Tests</th><th>Coverage Area</th></tr>
+    <tr><td>test_simulator.py</td><td>16</td><td>Telemetry, frames, scenarios</td></tr>
+    <tr><td>test_database.py</td><td>22</td><td>CRUD, queries, statistics</td></tr>
+    <tr><td>test_vector_store.py</td><td>30</td><td>Semantic search, embeddings</td></tr>
+    <tr><td>test_analyzer.py</td><td>18</td><td>Object extraction, tracking</td></tr>
+    <tr><td>test_alert_engine.py</td><td>17</td><td>All 6 alert rules</td></tr>
+    <tr><td>test_graph_agent.py</td><td>26</td><td>Multi-agent orchestration</td></tr>
+    <tr><td>test_integration.py</td><td>13</td><td>End-to-end pipeline</td></tr>
+    <tr><td><strong>Total</strong></td><td><strong>142</strong></td><td><strong>Complete coverage</strong></td></tr>
+</table>
+
+<h3>8.2 Dynamic Input Test Cases</h3>
+
+<table>
+    <tr><th>Test Case</th><th>Input</th><th>Expected Output</th></tr>
+    <tr><td>Unknown vehicle type</td><td>"Green motorcycle at gate"</td><td>Detected as vehicle with color attribute</td></tr>
+    <tr><td>Multiple objects</td><td>"Two workers and a truck"</td><td>Separate detection entries for each</td></tr>
+    <tr><td>Partial information</td><td>"Something moving near fence"</td><td>Activity flagged, perimeter alert</td></tr>
+    <tr><td>Time-sensitive</td><td>"Person at warehouse, 3:00 AM"</td><td>HIGH priority night activity alert</td></tr>
+</table>
+
+<h3>8.3 Emergency Response Test Cases</h3>
+
+<table>
+    <tr><th>Emergency Scenario</th><th>Frame Description</th><th>Response</th></tr>
+    <tr><td>Night Intruder</td><td>"Person walking near main gate at 2:30 AM"</td><td>HIGH alert, immediate notification</td></tr>
+    <tr><td>Suspicious Behavior</td><td>"Individual with face covered near fence"</td><td>HIGH alert, multiple triggers</td></tr>
+    <tr><td>Loitering</td><td>"Same person in parking lot for 10 minutes"</td><td>HIGH alert, tracking context</td></tr>
+</table>
+</div>
+
+<div class="section" id="improvements">
+<h2>9. What Could Be Done Better</h2>
+
+<p>If submission time was not constrained, these improvements would enhance the system:</p>
+
+<h3>9.1 Advanced VLM Integration</h3>
+<table>
+    <tr><th>Improvement</th><th>Current</th><th>Better Approach</th></tr>
+    <tr><td>VLM Model</td><td>BLIP-2 (2.7B)</td><td>LLaVA-1.6 (34B) or GPT-4o Vision</td></tr>
+    <tr><td>Object Detection</td><td>VLM captioning</td><td>YOLO v8 + VLM hybrid</td></tr>
+    <tr><td>Face Detection</td><td>None</td><td>InsightFace for re-identification</td></tr>
+    <tr><td>License Plate</td><td>None</td><td>PaddleOCR for plate reading</td></tr>
+</table>
+
+<h3>9.2 Video Summarization Enhancements</h3>
+<ul>
+    <li>Current: Basic text summarization of frame descriptions</li>
+    <li>Better: Video highlight clips + PDF reports with embedded frames</li>
+</ul>
+
+<h3>9.3 Real-Time Streaming Architecture</h3>
+<ul>
+    <li>Current: Batch processing of uploaded videos</li>
+    <li>Better: Apache Kafka message queue + GPU workers + WebSocket notifications</li>
+</ul>
+
+<h3>9.4 Production Infrastructure</h3>
+<table>
+    <tr><th>Component</th><th>Current</th><th>Production</th></tr>
+    <tr><td>Database</td><td>SQLite</td><td>PostgreSQL with TimescaleDB</td></tr>
+    <tr><td>Vector Store</td><td>ChromaDB</td><td>Pinecone or Weaviate (managed)</td></tr>
+    <tr><td>Deployment</td><td>Streamlit Cloud</td><td>Kubernetes on AWS/GCP</td></tr>
+</table>
+</div>
+
+<div class="section" id="ai-tools">
+<h2>10. AI Tools Usage (Claude Code)</h2>
+
+<h3>10.1 Claude Code Contributions</h3>
+
+<table>
+    <tr><th>Task</th><th>Manual Estimate</th><th>With Claude</th><th>Time Saved</th></tr>
+    <tr><td>Architecture Design</td><td>4 hours</td><td>1 hour</td><td>75%</td></tr>
+    <tr><td>Core Implementation</td><td>12 hours</td><td>4 hours</td><td>67%</td></tr>
+    <tr><td>Test Suite</td><td>4 hours</td><td>1.5 hours</td><td>62%</td></tr>
+    <tr><td>Documentation</td><td>3 hours</td><td>1 hour</td><td>67%</td></tr>
+    <tr><td>Debugging & Refinement</td><td>4 hours</td><td>2 hours</td><td>50%</td></tr>
+    <tr><td><strong>Total</strong></td><td><strong>27 hours</strong></td><td><strong>9.5 hours</strong></td><td><strong>65%</strong></td></tr>
+</table>
+
+<h3>10.2 Specific AI Contributions</h3>
+<ol>
+    <li><strong>Architecture:</strong> Suggested modular design with clear interfaces</li>
+    <li><strong>Alert Rules:</strong> Designed 6 security rules with appropriate triggers</li>
+    <li><strong>LLM Integration:</strong> Implemented Groq/OpenAI provider switching</li>
+    <li><strong>Streamlit UI:</strong> Built 5-tab interactive dashboard</li>
+    <li><strong>Test Cases:</strong> Generated comprehensive test scenarios</li>
+    <li><strong>Documentation:</strong> Created technical report and guides</li>
+</ol>
+
+<h3>10.3 Manual Customization</h3>
+<ul>
+    <li>Alert rule thresholds tuned for realistic behavior</li>
+    <li>LLM prompts optimized for security analysis</li>
+    <li>UI/UX improvements for better demonstration</li>
+    <li>Error handling and edge case management</li>
+</ul>
+</div>
+
+<div class="section" id="conclusion">
+<h2>11. Conclusion</h2>
+
+<p>The <strong>Drone Security Analyst Agent</strong> prototype successfully demonstrates all required capabilities:</p>
+
+<h3>Requirements Fulfilled</h3>
+<table>
+    <tr><th>Requirement</th><th>Evidence</th></tr>
+    <tr><td>Telemetry Simulation</td><td>simulator.py generates GPS, altitude, battery data</td></tr>
+    <tr><td>Video Frame Processing</td><td>LLM-powered analysis in streamlit_app.py</td></tr>
+    <tr><td>Object Detection</td><td>Detects vehicles, people with attributes</td></tr>
+    <tr><td>Security Alerts</td><td>6 configurable rules (R001-R006)</td></tr>
+    <tr><td>Frame Indexing</td><td>SQLite + ChromaDB storage</td></tr>
+    <tr><td>Natural Language Queries</td><td>LangChain agent with tools</td></tr>
+    <tr><td>Video Summarization</td><td>VideoSummarizer class</td></tr>
+    <tr><td>Follow-up Q&A</td><td>SecurityQA class</td></tr>
+</table>
+
+<h3>Technical Quality</h3>
+<ul>
+    <li><strong>142 test cases</strong> ensure reliability</li>
+    <li><strong>Modular architecture</strong> enables easy extension</li>
+    <li><strong>Dual LLM support</strong> (Groq + OpenAI) for flexibility</li>
+    <li><strong>Interactive dashboard</strong> for demonstration</li>
+    <li><strong>Comprehensive documentation</strong> for maintainability</li>
+</ul>
+
+<hr>
+
+<p><strong>Repository:</strong> <a href="https://github.com/Itz-gopi204/Drone-Ai-Assignment">https://github.com/Itz-gopi204/Drone-Ai-Assignment</a></p>
+<p><strong>Author:</strong> Gopi</p>
+<p><strong>Date:</strong> January 2025</p>
+
+</div>
+
+</body>
+</html>

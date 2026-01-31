@@ -40,10 +40,13 @@ streamlit>=1.30.0
 pytest>=7.4.0
 pytest-asyncio>=0.21.0
 
-# Optional: For actual VLM integration (future)
-# transformers>=4.36.0
-# torch>=2.1.0
-# Pillow>=10.0.0
+# Vision Language Model (VLM) Integration
+opencv-python>=4.8.0  # Video frame extraction
+Pillow>=10.0.0  # Image processing
+transformers>=4.36.0  # BLIP-2 and other VLMs (requires GPU for full functionality)
+# torch>=2.1.0  # Uncomment for GPU support (install separately based on your CUDA version)
+# Note: For CPU-only, install: pip install torch --index-url https://download.pytorch.org/whl/cpu
+# For CUDA, visit: https://pytorch.org/get-started/locally/
 
 # Type checking (development)
 # mypy>=1.8.0

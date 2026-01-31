@@ -31,6 +31,39 @@ except ImportError as e:
     print(f"Agent import error: {e}")
     AGENTS_AVAILABLE = False
 
+# Import VLM processor for video/image upload
+try:
+    from src.vlm_processor import (
+        VLMProcessor, VLMConfig, get_vlm_status,
+        process_uploaded_video, process_uploaded_image
+    )
+    VLM_AVAILABLE = True
+except ImportError as e:
+    print(f"VLM import error: {e}")
+    VLM_AVAILABLE = False
+
+# Import Direct Vision Pipeline (per-frame GPT-4 Vision - EXPENSIVE)
+try:
+    from src.vision_pipeline import (
+        DirectVisionPipeline, PipelineConfig, FrameAnalysisResult,
+        get_pipeline_status, process_video_with_vision, process_image_with_vision
+    )
+    VISION_PIPELINE_AVAILABLE = True
+except ImportError as e:
+    print(f"Vision Pipeline import error: {e}")
+    VISION_PIPELINE_AVAILABLE = False
+
+# Import Batch Vision Pipeline (RECOMMENDED - Cost Effective)
+try:
+    from src.batch_vision_pipeline import (
+        BatchVisionPipeline, BatchPipelineConfig, BatchAnalysisResult,
+        get_batch_pipeline_status, process_video_batch
+    )
+    BATCH_PIPELINE_AVAILABLE = True
+except ImportError as e:
+    print(f"Batch Pipeline import error: {e}")
+    BATCH_PIPELINE_AVAILABLE = False
+
 # Page configuration
 st.set_page_config(
     page_title="Drone Security Analyst Agent",
@@ -422,8 +455,9 @@ with st.sidebar:
     col2.metric("Alerts Generated", len(st.session_state.all_alerts))
 
 # Main content tabs
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "🎬 Live Demo",
+    "📹 Video/Image Upload",
     "🔍 Frame Processing",
     "⚠️ Alerts",
     "🔎 Query Database",
@@ -549,8 +583,401 @@ with tab1:
             </div>
             """, unsafe_allow_html=True)
 
-# ==================== Tab 2: Frame Processing ====================
+# ==================== Tab 2: Video/Image Upload ====================
 with tab2:
+    st.header("📹 Video & Image Upload")
+    st.write("Upload a video file or image to process with the Vision Language Model (VLM).")
+
+    # Show Pipeline status
+    if BATCH_PIPELINE_AVAILABLE:
+        batch_status = get_batch_pipeline_status()
+        col_status1, col_status2, col_status3, col_status4 = st.columns(4)
+        with col_status1:
+            if batch_status["groq_available"]:
+                st.success("✅ Groq LLM Ready")
+            else:
+                st.warning("⚠️ No Groq API Key")
+        with col_status2:
+            if batch_status.get("cuda_available"):
+                st.success(f"✅ GPU: {batch_status.get('gpu_name', 'Unknown')[:20]}")
+            else:
+                st.info("ℹ️ No GPU (CPU mode)")
+        with col_status3:
+            if batch_status["blip2_available"]:
+                st.success("✅ BLIP Ready")
+            else:
+                st.info("ℹ️ Simulated VLM")
+        with col_status4:
+            st.success(f"💰 Cost: FREE")
+
+        # Strategy selection with clear explanation
+        st.markdown("""
+        ### Vision Processing Strategy
+
+        | Strategy | How it Works | Cost |
+        |----------|--------------|------|
+        | **batch** (Recommended) | Frames → Local VLM/Simulated → Text → ONE LLM call | **FREE** |
+        | **direct** | Each frame → GPT-4 Vision API | ~$0.02/frame |
+
+        **Batch Pipeline** (Recommended):
+        1. Extract frames from video
+        2. Generate text descriptions (BLIP-2 local or simulated)
+        3. Send ALL descriptions to Groq LLM in ONE call
+        4. Get comprehensive analysis with alerts
+
+        **Cost Comparison:**
+        - 50 frames with GPT-4 Vision: ~$1.00
+        - 50 frames with Batch Pipeline: **$0.00** (Groq is free!)
+        """)
+
+        processing_strategy = st.selectbox(
+            "Select Processing Strategy",
+            options=["batch", "direct"],
+            index=0,
+            help="'batch' is recommended - uses free Groq API for analysis"
+        )
+
+        st.divider()
+
+        # Two columns for Video and Image upload
+        upload_col1, upload_col2 = st.columns(2)
+
+        with upload_col1:
+            st.subheader("🎬 Video Upload")
+            video_file = st.file_uploader(
+                "Upload a video file",
+                type=["mp4", "avi", "mov", "mkv"],
+                key="video_upload"
+            )
+
+            if video_file:
+                st.video(video_file)
+
+                frame_interval = st.slider("Frame extraction interval (seconds)", 1, 30, 5)
+                max_frames = st.slider("Maximum frames to extract", 5, 50, 20)
+
+                if st.button("🚀 Process Video", type="primary", key="process_video"):
+                    # Reset video file and save to temp
+                    video_file.seek(0)
+                    import tempfile
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
+                        tmp.write(video_file.read())
+                        tmp_path = tmp.name
+
+                    try:
+                        if processing_strategy == "batch":
+                            # BATCH PIPELINE (RECOMMENDED - FREE)
+                            st.info("🔄 Using Batch Pipeline (FREE with Groq)")
+
+                            batch_config = BatchPipelineConfig(
+                                frame_interval_seconds=frame_interval,
+                                max_frames=max_frames,
+                                vlm_provider="auto"  # Auto-detect BLIP if GPU available
+                            )
+
+                            pipeline = BatchVisionPipeline(config=batch_config)
+
+                            # Progress tracking
+                            progress_bar = st.progress(0)
+                            status_text = st.empty()
+
+                            # Step 1: Extract frames and generate captions
+                            status_text.text("📹 Extracting frames and generating descriptions...")
+                            frames = pipeline.extract_frames(tmp_path)
+                            progress_bar.progress(0.5)
+
+                            # Step 2: Analyze ALL frames in ONE LLM call
+                            status_text.text("🤖 Analyzing all frames with LLM (ONE API call)...")
+                            result = pipeline.analyze_batch(frames)
+                            progress_bar.progress(1.0)
+
+                            # Process results
+                            for frame_result in result.frames:
+                                # Convert alerts to UI format
+                                alerts = []
+                                for a in frame_result.get("alerts", []):
+                                    alerts.append({
+                                        "rule_id": a.get("rule_id", "R000"),
+                                        "name": a.get("name", "Alert"),
+                                        "priority": a.get("priority", "MEDIUM"),
+                                        "description": a.get("reason", a.get("name", "Security concern"))
+                                    })
+
+                                processed = {
+                                    "frame_id": frame_result.get("frame_id"),
+                                    "timestamp": frame_result.get("timestamp", datetime.now().isoformat()),
+                                    "description": frame_result.get("description", ""),
+                                    "location": frame_result.get("location", {}),
+                                    "objects": frame_result.get("objects", []),
+                                    "alerts": alerts,
+                                    "threat_level": frame_result.get("threat_level", "UNKNOWN")
+                                }
+
+                                st.session_state.processed_frames.append(processed)
+                                st.session_state.frame_database.append(processed)
+                                st.session_state.all_alerts.extend(alerts)
+
+                            # Show batch analysis results
+                            status_text.text("✅ Batch analysis complete!")
+                            st.success(f"Processed {len(result.frames)} frames in ONE API call!")
+
+                            # Show summary
+                            st.subheader("📊 Analysis Summary")
+                            col_sum1, col_sum2, col_sum3 = st.columns(3)
+                            col_sum1.metric("Frames Analyzed", len(result.frames))
+                            col_sum2.metric("Alerts Generated", len(result.alerts))
+                            col_sum3.metric("Threat Level", result.threat_assessment)
+
+                            st.write(f"**Summary:** {result.summary}")
+
+                            if result.statistics.get("patterns"):
+                                st.subheader("🔍 Patterns Detected")
+                                for pattern in result.statistics["patterns"]:
+                                    st.write(f"- {pattern}")
+
+                        else:
+                            # DIRECT PIPELINE (EXPENSIVE - per frame API call)
+                            st.warning("⚠️ Using Direct Pipeline (costs ~$0.02 per frame)")
+
+                            pipeline_config = PipelineConfig(
+                                provider="direct" if get_pipeline_status().get("direct_vision_available") else "simulated",
+                                frame_interval_seconds=frame_interval,
+                                max_frames=max_frames,
+                                store_to_database=False
+                            )
+
+                            db = st.session_state.db if AGENTS_AVAILABLE else None
+                            pipeline = DirectVisionPipeline(config=pipeline_config, database=db)
+
+                            progress_bar = st.progress(0)
+                            status_text = st.empty()
+
+                            frames_extracted = list(pipeline.extract_frames(tmp_path))
+                            total_frames = len(frames_extracted)
+                            st.info(f"📹 Extracted {total_frames} frames from video")
+
+                            for i, frame_info in enumerate(frames_extracted):
+                                status_text.text(f"🤖 Analyzing frame {i+1}/{total_frames} with Vision AI...")
+                                progress_bar.progress((i + 1) / total_frames)
+
+                                result = pipeline.analyze_frame(
+                                    frame_data=frame_info["frame_data"],
+                                    location=frame_info["location"],
+                                    timestamp=frame_info["timestamp"],
+                                    telemetry=frame_info["telemetry"],
+                                    frame_id=frame_info["frame_id"]
+                                )
+
+                                alerts = []
+                                for a in result.alerts:
+                                    alerts.append({
+                                        "rule_id": a.get("rule_id", "R000"),
+                                        "name": a.get("name", "Alert"),
+                                        "priority": a.get("priority", "MEDIUM"),
+                                        "description": a.get("reason", a.get("name", "Security concern"))
+                                    })
+
+                                processed = {
+                                    "frame_id": result.frame_id,
+                                    "timestamp": result.timestamp.isoformat(),
+                                    "description": result.description,
+                                    "location": result.location,
+                                    "telemetry": result.telemetry,
+                                    "objects": result.objects,
+                                    "alerts": alerts,
+                                    "threat_level": result.threat_level,
+                                    "analysis": result.analysis
+                                }
+
+                                st.session_state.processed_frames.append(processed)
+                                st.session_state.frame_database.append(processed)
+                                st.session_state.all_alerts.extend(alerts)
+
+                            status_text.text("✅ Video processing complete!")
+                            st.success(f"Processed {total_frames} frames, generated {len(st.session_state.all_alerts)} alerts")
+
+                        st.rerun()
+
+                    except Exception as e:
+                        st.error(f"Error processing video: {str(e)}")
+                        import traceback
+                        st.code(traceback.format_exc())
+                    finally:
+                        # Clean up temp file
+                        import os
+                        if os.path.exists(tmp_path):
+                            os.unlink(tmp_path)
+
+        with upload_col2:
+            st.subheader("🖼️ Image Upload")
+            image_file = st.file_uploader(
+                "Upload an image",
+                type=["jpg", "jpeg", "png", "bmp"],
+                key="image_upload"
+            )
+
+            # Location selection for image
+            image_location = st.selectbox(
+                "Select Image Location",
+                options=["Main Gate", "Parking Lot", "Warehouse", "Loading Dock", "Back Fence", "Office Building"],
+                key="image_location"
+            )
+            image_zone = st.selectbox(
+                "Select Zone",
+                options=["perimeter", "parking", "storage", "operations", "main"],
+                key="image_zone"
+            )
+
+            if image_file:
+                st.image(image_file, caption="Uploaded Image", use_container_width=True)
+
+                if st.button("🔍 Analyze Image with Vision AI", type="primary", key="analyze_image"):
+                    with st.spinner("🤖 Analyzing image with Direct Vision Pipeline..."):
+                        try:
+                            image_file.seek(0)
+                            from PIL import Image
+                            image = Image.open(image_file)
+
+                            # Create pipeline - use direct if available, else simulated
+                            provider = "direct" if get_pipeline_status().get("direct_vision_available") else "simulated"
+                            pipeline_config = PipelineConfig(provider=provider)
+                            db = st.session_state.db if AGENTS_AVAILABLE else None
+                            pipeline = DirectVisionPipeline(config=pipeline_config, database=db)
+
+                            # Analyze image with full context
+                            location = {"name": image_location, "zone": image_zone}
+                            timestamp = datetime.now()
+
+                            result = pipeline.analyze_frame(
+                                frame_data=image,
+                                location=location,
+                                timestamp=timestamp,
+                                frame_id=len(st.session_state.processed_frames) + 1
+                            )
+
+                            st.success("✅ Image analyzed with Vision AI!")
+
+                            # Display results in organized sections
+                            col_result1, col_result2 = st.columns(2)
+
+                            with col_result1:
+                                st.subheader("📝 Scene Description")
+                                st.info(result.description)
+
+                                st.subheader("🎯 Detected Objects")
+                                if result.objects:
+                                    for obj in result.objects:
+                                        st.markdown(f"""
+                                        <div class="detection-box">
+                                            <strong>{obj.get('type', 'object').title()}</strong>: {obj.get('description', 'N/A')}
+                                        </div>
+                                        """, unsafe_allow_html=True)
+                                else:
+                                    st.write("No objects detected")
+
+                            with col_result2:
+                                st.subheader("⚠️ Security Alerts")
+                                if result.alerts:
+                                    for alert in result.alerts:
+                                        priority = alert.get('priority', 'MEDIUM')
+                                        priority_class = f"alert-{priority.lower()}"
+                                        st.markdown(f"""
+                                        <div class="{priority_class}">
+                                            <strong>[{priority}] {alert.get('name', 'Alert')}</strong><br>
+                                            Rule: {alert.get('rule_id', 'N/A')}<br>
+                                            {alert.get('reason', '')}
+                                        </div>
+                                        """, unsafe_allow_html=True)
+                                else:
+                                    st.success("No security alerts triggered")
+
+                                st.subheader("🎚️ Threat Assessment")
+                                threat_colors = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🟢", "NONE": "⚪"}
+                                st.markdown(f"**Threat Level:** {threat_colors.get(result.threat_level, '❓')} **{result.threat_level}**")
+
+                            # Show full analysis
+                            with st.expander("📊 Full Security Analysis"):
+                                st.write(result.analysis)
+                                st.json(result.to_dict())
+
+                            # Store results
+                            alerts = []
+                            for a in result.alerts:
+                                alerts.append({
+                                    "rule_id": a.get("rule_id", "R000"),
+                                    "name": a.get("name", "Alert"),
+                                    "priority": a.get("priority", "MEDIUM"),
+                                    "description": a.get("reason", a.get("name", "Security concern"))
+                                })
+
+                            processed = {
+                                "frame_id": result.frame_id,
+                                "timestamp": timestamp.isoformat(),
+                                "description": result.description,
+                                "location": location,
+                                "objects": result.objects,
+                                "alerts": alerts,
+                                "threat_level": result.threat_level,
+                                "analysis": result.analysis
+                            }
+                            st.session_state.processed_frames.append(processed)
+                            st.session_state.frame_database.append(processed)
+                            st.session_state.all_alerts.extend(alerts)
+
+                            # Save to database
+                            if AGENTS_AVAILABLE and st.session_state.db:
+                                try:
+                                    st.session_state.db.index_frame(
+                                        frame_id=result.frame_id,
+                                        timestamp=timestamp,
+                                        location_name=location["name"],
+                                        location_zone=location["zone"],
+                                        description=result.description,
+                                        objects=result.objects,
+                                        telemetry={}
+                                    )
+                                    for alert in alerts:
+                                        st.session_state.db.add_alert(
+                                            frame_id=result.frame_id,
+                                            rule_id=alert["rule_id"],
+                                            priority=alert["priority"],
+                                            description=alert["description"]
+                                        )
+                                    st.info("💾 Saved to database")
+                                except Exception as db_err:
+                                    pass
+
+                        except Exception as e:
+                            st.error(f"Error analyzing image: {str(e)}")
+
+        # Show processed frames from video/image
+        if st.session_state.processed_frames:
+            st.divider()
+            st.subheader("📊 Processed Frames")
+            for frame in st.session_state.processed_frames[-5:]:
+                with st.expander(f"Frame {frame['frame_id']} - {frame.get('location', {}).get('name', 'Unknown')}"):
+                    st.write(f"**Description:** {frame['description']}")
+                    st.write(f"**Timestamp:** {frame['timestamp']}")
+                    if frame.get('objects'):
+                        st.write(f"**Objects:** {frame['objects']}")
+                    if frame.get('alerts'):
+                        st.write(f"**Alerts:** {frame['alerts']}")
+    elif VLM_AVAILABLE:
+        # Fallback to old VLM processor if new pipeline not available
+        st.warning("⚠️ New Vision Pipeline not available. Using legacy VLM processor.")
+        vlm_status = get_vlm_status()
+        vlm_provider = st.selectbox(
+            "Select VLM Provider (Legacy)",
+            options=["simulated", "blip2", "gpt4v"],
+            index=0
+        )
+        st.info("For best results, install openai package and set OPENAI_API_KEY")
+    else:
+        st.error("⚠️ Vision modules not available. Please check installation.")
+        st.code("pip install opencv-python openai Pillow")
+
+# ==================== Tab 3: Frame Processing ====================
+with tab3:
     st.header("🔍 Frame-by-Frame Processing")
     st.write("See how the agent analyzes individual frames.")
 
@@ -693,8 +1120,8 @@ with tab2:
             with st.expander("📄 Raw JSON Output"):
                 st.json(analysis)
 
-# ==================== Tab 3: Alerts ====================
-with tab3:
+# ==================== Tab 4: Alerts ====================
+with tab4:
     st.header("⚠️ Security Alerts")
 
     col1, col2, col3 = st.columns(3)
@@ -729,8 +1156,8 @@ with tab3:
     else:
         st.info("No alerts to display. Run the demo first!")
 
-# ==================== Tab 4: Query Database ====================
-with tab4:
+# ==================== Tab 5: Query Database ====================
+with tab5:
     st.header("🔎 Query Frame Database")
     st.write("Search through indexed frames using natural language queries.")
 
@@ -818,8 +1245,8 @@ with tab4:
             for frame in results:
                 st.write(f"- Frame {frame['frame_id']}: {frame['description'][:60]}...")
 
-# ==================== Tab 5: Summary ====================
-with tab5:
+# ==================== Tab 6: Summary ====================
+with tab6:
     st.header("📝 Video Summary")
     st.write("AI-generated summary of surveillance activity.")
 

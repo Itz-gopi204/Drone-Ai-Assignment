@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Drone Security Analyst Agent - Code Documentation</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 40px; color: #333; }
+        h1 { color: #1a365d; border-bottom: 3px solid #2563eb; padding-bottom: 10px; }
+        h2 { color: #1e40af; margin-top: 30px; border-bottom: 1px solid #ddd; }
+        h3 { color: #3b82f6; }
+        table { border-collapse: collapse; width: 100%; margin: 15px 0; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        th { background-color: #f3f4f6; }
+        code { background-color: #f3f4f6; padding: 2px 6px; border-radius: 3px; }
+        pre { background-color: #1f2937; color: #e5e7eb; padding: 15px; border-radius: 5px; overflow-x: auto; }
+        pre code { background: none; color: inherit; }
+        .highlight { background-color: #dbeafe; padding: 15px; border-left: 4px solid #2563eb; margin: 15px 0; }
+        @media print { body { padding: 20px; } }
+    </style>
+</head>
+<body>
+
+<h1>Drone Security Analyst Agent</h1>
+<p><strong>Code Documentation</strong></p>
+<p>FlytBase AI Engineer Assignment | Author: Gopi | January 2025</p>
+
+<hr>
+
+<h2>1. Project Overview</h2>
+
+<p>An AI-powered security monitoring system for drone surveillance that processes telemetry and video frames to provide automated object detection, security alerts, and natural language queries.</p>
+
+<div class="highlight">
+<strong>Key Features:</strong>
+<ul>
+    <li>6 configurable security alert rules (R001-R006)</li>
+    <li>LangChain + LangGraph multi-agent system</li>
+    <li>SQLite + ChromaDB dual storage for structured and semantic queries</li>
+    <li>BLIP + Groq cost-effective vision pipeline (FREE)</li>
+    <li>142 comprehensive test cases</li>
+</ul>
+</div>
+
+<h2>2. Installation & Setup</h2>
+
+<h3>Prerequisites</h3>
+<ul>
+    <li>Python 3.10+</li>
+    <li>Git</li>
+    <li>Groq API Key (free at https://console.groq.com)</li>
+</ul>
+
+<h3>Quick Start</h3>
+<pre><code># Clone repository
+git clone https://github.com/Itz-gopi204/Drone-Ai-Assignment.git
+cd Drone-Ai-Assignment
+
+# Create virtual environment
+python -m venv venv
+venv\Scripts\activate  # Windows
+source venv/bin/activate  # Linux/Mac
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Configure API key
+echo "LLM_PROVIDER=groq" > .env
+echo "GROQ_API_KEY=your-key-here" >> .env
+
+# Run the application
+streamlit run streamlit_app.py</code></pre>
+
+<h2>3. Project Structure</h2>
+
+<pre><code>drone-security-agent/
+├── src/
+│   ├── config.py              # Configuration and API keys
+│   ├── simulator.py           # Telemetry & frame generation
+│   ├── database.py            # SQLite operations
+│   ├── vector_store.py        # ChromaDB semantic search
+│   ├── analyzer.py            # Object extraction & tracking
+│   ├── alert_engine.py        # 6 security rules (R001-R006)
+│   ├── agent.py               # LangChain agent
+│   ├── graph_agent.py         # LangGraph multi-agent system
+│   ├── bonus_features.py      # Summarization & Q&A
+│   ├── vlm_processor.py       # Video/image processing
+│   ├── vision_pipeline.py     # Direct GPT-4 Vision pipeline
+│   └── batch_vision_pipeline.py  # BLIP + Groq pipeline
+├── tests/                     # 142 test cases
+├── docs/                      # Documentation
+├── streamlit_app.py           # Web dashboard
+└── requirements.txt           # Dependencies</code></pre>
+
+<h2>4. Core Components</h2>
+
+<h3>4.1 VLM Scripts</h3>
+<table>
+    <tr><th>File</th><th>Purpose</th></tr>
+    <tr><td><code>vlm_processor.py</code></td><td>Video frame extraction with OpenCV + VLM captioning</td></tr>
+    <tr><td><code>batch_vision_pipeline.py</code></td><td>Cost-effective BLIP (local) + Groq pipeline</td></tr>
+    <tr><td><code>vision_pipeline.py</code></td><td>Direct GPT-4 Vision per-frame analysis</td></tr>
+</table>
+
+<h3>4.2 LangChain Agent Code</h3>
+<table>
+    <tr><th>File</th><th>Purpose</th></tr>
+    <tr><td><code>agent.py</code></td><td>LangChain agent with security analysis tools</td></tr>
+    <tr><td><code>graph_agent.py</code></td><td>LangGraph multi-agent system with supervisor pattern</td></tr>
+</table>
+
+<h3>4.3 Context Management</h3>
+<table>
+    <tr><th>File</th><th>Purpose</th></tr>
+    <tr><td><code>database.py</code></td><td>SQLite storage for frames, alerts, detections</td></tr>
+    <tr><td><code>vector_store.py</code></td><td>ChromaDB for semantic search</td></tr>
+    <tr><td><code>analyzer.py</code></td><td>Object tracking across frames</td></tr>
+</table>
+
+<h2>5. Security Alert Rules</h2>
+
+<table>
+    <tr><th>Rule ID</th><th>Name</th><th>Priority</th><th>Trigger</th></tr>
+    <tr><td>R001</td><td>Night Activity</td><td>HIGH</td><td>Person detected 00:00-05:00</td></tr>
+    <tr><td>R002</td><td>Loitering</td><td>HIGH</td><td>Same person > 5 minutes</td></tr>
+    <tr><td>R003</td><td>Perimeter Activity</td><td>MEDIUM</td><td>Activity in perimeter zone</td></tr>
+    <tr><td>R004</td><td>Repeat Vehicle</td><td>LOW</td><td>Vehicle > 2 times in 24h</td></tr>
+    <tr><td>R005</td><td>Unknown Vehicle</td><td>MEDIUM</td><td>Unrecognized in restricted area</td></tr>
+    <tr><td>R006</td><td>Suspicious Behavior</td><td>HIGH</td><td>Face covering, hiding</td></tr>
+</table>
+
+<h2>6. Vision Processing Pipelines</h2>
+
+<h3>Batch Pipeline (Recommended - FREE)</h3>
+<pre><code>Video → OpenCV → BLIP (local GPU) → Text → ONE Groq LLM Call → Analysis</code></pre>
+<p><strong>Cost:</strong> $0.00 per video (vs $1.00+ with GPT-4 Vision)</p>
+
+<h3>Direct Pipeline</h3>
+<pre><code>Video → OpenCV → GPT-4 Vision per frame → Analysis</code></pre>
+<p><strong>Cost:</strong> ~$0.02 per frame</p>
+
+<h2>7. API Usage</h2>
+
+<h3>Process Video</h3>
+<pre><code>from src.batch_vision_pipeline import BatchVisionPipeline
+
+pipeline = BatchVisionPipeline()
+result = pipeline.process_video("security_footage.mp4")
+print(result.alerts)
+print(result.summary)</code></pre>
+
+<h3>Query Database</h3>
+<pre><code>from src.database import SecurityDatabase
+
+db = SecurityDatabase()
+frames = db.query_frames(zone="perimeter", description="truck")
+alerts = db.get_alerts(priority="HIGH")</code></pre>
+
+<h2>8. Running Tests</h2>
+
+<pre><code># Run all 142 tests
+pytest tests/ -v
+
+# Run specific test file
+pytest tests/test_alert_engine.py -v
+
+# Run with coverage
+pytest tests/ --cov=src --cov-report=html</code></pre>
+
+<h2>9. Demo Commands</h2>
+
+<pre><code># Batch pipeline demo
+python demo_batch_pipeline.py
+
+# Streamlit dashboard
+streamlit run streamlit_app.py
+
+# CLI demo
+python -m src.main --curated</code></pre>
+
+<hr>
+<p><strong>Repository:</strong> https://github.com/Itz-gopi204/Drone-Ai-Assignment</p>
+<p><strong>Author:</strong> Gopi</p>
+
+</body>
+</html>
